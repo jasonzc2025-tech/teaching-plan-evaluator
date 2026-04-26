@@ -1,137 +1,88 @@
-# 住培临床教案质量智能评审系统 V1.0
+# 住培临床教案质量智能评审系统 V3.0
 
-这是一个基于 Flask 的 Web 应用，用于对住院医师规范化培训相关教案进行结构化评审、问题归类和研究型统计分析。
+> 基于大语言模型 · 条款级 · 证据驱动 · 可复核
 
-## 核心能力
+本系统面向住院医师规范化培训（住培）场景，对五类教案进行结构化、百分制、条款级评审，支持网页端实时使用与质控管理后台统计分析。
 
-- 教案文本上传与粘贴评审
-- 五类教案自动识别或手动指定
-- 结构化输出：总分、条款分、问题列表、优点、修改建议
-- 研究型落库：问题分类、严重程度、条款失分、版本信息
-- 后台分析：类型分布、问题热度、严重程度、近14天趋势
-- CSV 导出：记录表、问题表、条款表
-- 软著辅助脚本：自动生成源程序交存版文本
+## 功能特性
 
-## 目录说明
+- **五类教案支持**：教学查房、病例讨论、临床小讲课、技能培训、教学门诊
+- **百分制条款评分**：通用维度（45分）+ 分项维度（55分），每分有证据依据
+- **流式实时输出**：LLM 生成过程实时展示，无需等待
+- **自动元数据解析**：从文件名自动识别科室、带教老师、课程名称
+- **否决项刚性约束**：知情同意、应急预案等关键安全条款缺失自动触发否决
+- **防操纵机制**：检测并过滤教案中植入的诱导性评分指令
+- **研究型后台**：按老师/科室/评审轮次多维统计，支持 CSV 导出
+- **多轮评审追踪**：同一课程多次提交自动记录进步轨迹
 
-```text
-.
-├── app.py                     # 启动入口
-├── wsgi.py                    # 生产环境入口
-├── config.py                  # 配置对象
-├── requirements.txt
-├── scripts/
-│   └── build_source_submission.py
-├── teaching_eval/
-│   ├── __init__.py
-│   ├── db.py
-│   ├── schema.py
-│   ├── prompts.py
-│   ├── extractors.py
-│   ├── parser.py
-│   ├── llm_client.py
-│   ├── repository.py
-│   ├── stats.py
-│   ├── services.py
-│   ├── routes_public.py
-│   └── routes_admin.py
-├── templates/
-│   ├── base.html
-│   ├── index.html
-│   ├── login.html
-│   ├── admin_dashboard.html
-│   └── record_detail.html
-└── static/
-    └── app.css
-```
+## 快速开始
 
-## 快速启动
+### 方式一：直接访问网页端
 
-### 1. 安装依赖
+无需注册，上传教案文件（.docx / .pdf / .txt）或粘贴文本即可评审。
 
-```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-```
+### 方式二：本地部署（Python venv）
 
-### 2. 配置环境变量
+    git clone https://github.com/jasonzc2025-tech/teaching-plan-evaluator.git
+    cd teaching-plan-evaluator
+    python3 -m venv venv
+    source venv/bin/activate
+    pip install -r requirements.txt
+    pip install "gunicorn>=21.2" "gevent>=23.9"
+    cp .env.example .env
+    # 编辑 .env，填入 LLM_API_KEY、SECRET_KEY、ADMIN_PASSWORD
+    gunicorn -w 2 -k gevent -b 0.0.0.0:8081 --timeout 300 wsgi:application
 
-复制 `.env.example` 为 `.env`，然后填写：
+## 环境变量说明
 
-- `LLM_API_KEY`
-- `LLM_API_BASE`
-- `LLM_MODEL_NAME`
-- `SECRET_KEY`
-- `ADMIN_PASSWORD`
+| 变量 | 说明 | 示例 |
+|---|---|---|
+| LLM_API_KEY | DeepSeek API 密钥 | sk-xxx |
+| LLM_API_BASE | API 地址 | https://api.deepseek.com/v1/chat/completions |
+| LLM_MODEL_NAME | 模型名称 | deepseek-chat |
+| SECRET_KEY | Flask session 密钥 | 随机长串 |
+| ADMIN_PASSWORD | 后台登录密码 | 自定义 |
+| DB_PATH | SQLite 数据库路径 | /app/instance/eval_records.db |
 
-### 3. 启动应用
+## 目录结构
 
-```bash
-python app.py
-```
+    .
+    ├── app.py                  # 开发启动入口
+    ├── wsgi.py                 # 生产环境入口
+    ├── config.py               # 配置管理
+    ├── requirements.txt        # 依赖列表
+    ├── teaching_eval/          # 核心业务模块
+    │   ├── routes_public.py    # 公开路由（评审接口）
+    │   ├── routes_admin.py     # 后台路由
+    │   ├── services.py         # 业务逻辑
+    │   ├── llm_client.py       # LLM 客户端（支持流式）
+    │   ├── extractors.py       # 文件文本提取
+    │   ├── parser.py           # 结构化结果解析
+    │   ├── repository.py       # 数据库操作
+    │   ├── prompts.py          # 提示词加载
+    │   └── prompt_blocks/      # 模块化提示词文件
+    ├── templates/              # Jinja2 模板
+    ├── static/                 # 静态资源
+    └── nginx/                  # Nginx 配置
 
-访问：
+## Skill 使用
 
-- 前台：`http://127.0.0.1:5000/`
-- 后台：`http://127.0.0.1:5000/admin`
+本项目提供 Claude Skill 文件，供质控管理人员在 Claude 中本地装载，实现教案批量初筛。
 
-### PDF 解析（本地非 Docker）
+详见 references/SKILL.md
 
-上传 `.pdf` 时，服务端会调用 `pdftotext`（来自 **Poppler**，包名常见为 `poppler-utils`）。Docker 镜像已安装；若在 Windows 或未装 Poppler 的环境直接 `python app.py`，需自行安装并保证 `pdftotext` 在 `PATH` 中，否则 PDF 会解析失败。
+## 版本历史
 
-### 排障时查看接口错误详情
+| 版本 | 日期 | 主要变更 |
+|---|---|---|
+| V3.0 | 2026-04 | 流式输出、UI重设计、自动元数据、后台多维统计、评审轮次追踪 |
+| V2.6 | 2026-03 | 百分制条款评分、五类教案、三联证据、否决项、防操纵机制 |
+| V1.0 | 2026-01 | 初版上线 |
 
-`.env` 中设置 `EVAL_EXPOSE_INTERNAL_ERRORS=true` 后，非预期异常会在接口中返回具体原因（**勿在生产对公网开启**）。用户输入类错误（如格式不支持、内容过短）始终返回明确文案。
+## 申报信息
 
-## 与旧版兼容
+本系统已参加中国高等教育学会全国医学教育发展中心医学教育智能体及应用案例申报（2026年4月），申报单位：上海市同仁医院。
 
-本版本保留了以下接口，便于替换旧系统：
+## 许可证
 
-- `POST /evaluate`
-- `GET /health`
-- `GET|POST /admin/login`
-- `GET /admin`
-- `GET /admin/record/<record_id>`
-
-## 研究型数据结构
-
-### records 主表
-记录单份教案评审的总体信息、版本信息和摘要结果。
-
-### record_issues 问题表
-按问题粒度保存每条问题的分类、严重程度、证据位置和建议。
-
-### clause_scores 条款表
-按条款保存满分、实得分、判定说明和证据位置。
-
-## 软著辅助
-
-执行以下脚本可生成源程序交存文本：
-
-```bash
-python scripts/build_source_submission.py
-```
-
-输出文件位于 `artifacts/source_submission_full.txt`。代码变更后应重新执行该脚本，避免交存文本与仓库不一致。
-
-部署或打压缩包前，可在项目根目录一键执行（清理缓存并再生成交存文本）：
-
-```bash
-python scripts/prepare_deploy.py
-```
-
-## 打包发布前（可选）
-
-亦可仅用 PowerShell 手动清理：
-
-```powershell
-Get-ChildItem -Recurse -Directory -Filter "__pycache__" | Remove-Item -Recurse -Force
-Get-ChildItem -Recurse -Filter "*.pyc" | Remove-Item -Force
-```
-
-## 注意事项
-
-- 系统默认不落库教案原文，只记录摘要和结构化评审结果。
-- 如需做前后对比研究，建议在前台补录“科室、带教老师、课程名称、轮次”等字段。
-- 建议部署时使用 Gunicorn / uWSGI + Nginx。
+MIT License © 2026 张畅 · 上海市同仁医院
