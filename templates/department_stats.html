@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}科室维度对比{% endblock %}
+{% block body %}
+<div class="topbar">
+  <div class="container topbar-inner">
+    <div>
+      <h1>科室维度对比</h1>
+      <p>各科室平均分、问题类型与缓冲带触发率</p>
+    </div>
+    <div class="toolbar">
+      <a class="btn ghost" href="/admin">返回后台</a>
+    </div>
+  </div>
+</div>
+
+<div class="container">
+  <section class="card">
+    <h2>科室总体表现</h2>
+    <table class="table">
+      <thead><tr><th>科室</th><th>样本量</th><th>平均总分</th><th>平均major</th><th>平均fatal</th><th>缓冲触发率</th></tr></thead>
+      <tbody>
+        {% for row in department_overview %}
+        <tr>
+          <td>{{ row.department }}</td>
+          <td>{{ row.cnt }}</td>
+          <td>{{ row.avg_score }}</td>
+          <td>{{ row.avg_major }}</td>
+          <td>{{ row.avg_fatal }}</td>
+          <td>{{ row.buffer_rate }}%</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+
+  <div class="dashboard-grid">
+    <section class="card">
+      <h2>问题分类分布</h2>
+      <canvas id="issueCategoryChart" height="220"></canvas>
+    </section>
+
+    <section class="card">
+      <h2>教案类型分布</h2>
+      <canvas id="typeDistributionChart" height="220"></canvas>
+    </section>
+  </div>
+</div>
+
+<script>
+const issueDistribution = {{ issue_distribution|tojson }};
+new Chart(document.getElementById('issueCategoryChart'), {
+  type: 'doughnut',
+  data: {
+    labels: issueDistribution.map(x => x.issue_category),
+    datasets: [{ data: issueDistribution.map(x => x.cnt), backgroundColor: ['#3e95cd','#8e5ea2','#3cba9f','#e8c3b9','#c45850'] }]
+  },
+  options: { responsive: true, maintainAspectRatio: false }
+});
+
+const typeDistribution = {{ type_distribution|tojson }};
+new Chart(document.getElementById('typeDistributionChart'), {
+  type: 'bar',
+  data: {
+    labels: typeDistribution.map(x => x.doc_type),
+    datasets: [{ label: '数量', data: typeDistribution.map(x => x.cnt), backgroundColor: '#3e95cd' }]
+  },
+  options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } } }
+});
+</script>
+{% endblock %}

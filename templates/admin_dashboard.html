@@ -1,0 +1,237 @@
+{% extends "base.html" %}
+{% block title %}运营与研究后台{% endblock %}
+{% block body %}
+
+<div class="topbar">
+  <div class="container topbar-inner">
+    <div class="topbar-brand">
+      <div class="topbar-icon">📈</div>
+      <div>
+        <h1>运营与研究后台</h1>
+        <p>记录总分 · 问题分类 · 条款失分 · 评审轮次追踪</p>
+      </div>
+    </div>
+    <div class="toolbar">
+      <a class="btn ghost" href="/admin/export/records.csv">⬇ 导出记录表</a>
+      <a class="btn ghost" href="/admin/export/record_issues.csv">⬇ 导出问题表</a>
+      <a class="btn ghost" href="/admin/export/clause_scores.csv">⬇ 导出条款表</a>
+      <a class="btn ghost" href="/admin/logout">退出</a>
+    </div>
+  </div>
+</div>
+
+<div class="container" style="padding-bottom:40px;">
+
+  <!-- KPI 概览 -->
+  <div class="kpi-grid wide" style="margin-bottom:24px;">
+    <div class="kpi"><span>📊 累计评审</span><strong>{{ total }}</strong></div>
+    <div class="kpi"><span>📅 今日评审</span><strong>{{ today }}</strong></div>
+    <div class="kpi"><span>⭐ 平均总分</span><strong>{{ avg_score }}</strong></div>
+    <div class="kpi"><span>🚫 否决数</span><strong>{{ vetoed }}</strong></div>
+    <div class="kpi"><span>⏱ 平均用时(秒)</span><strong>{{ avg_duration }}</strong></div>
+    <div class="kpi"><span>⚠️ 平均问题数</span><strong>{{ avg_issue_count }}</strong></div>
+  </div>
+
+  <!-- 图表行 -->
+  <div class="dashboard-grid">
+    <div class="card">
+      <h2>📆 近14天评审量与平均分</h2>
+      <div class="chart-wrap">
+        <canvas id="dailyChart"></canvas>
+      </div>
+    </div>
+    <div class="card">
+      <h2>🎯 问题严重程度分布</h2>
+      <div class="chart-wrap chart-wrap--doughnut">
+        <canvas id="severityChart"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- 老师 / 科室 / 评审轮次 -->
+  <div class="dashboard-grid">
+    <div class="card">
+      <h2>👨‍⚕️ 带教老师提交统计</h2>
+      {% if by_teacher %}
+      <div class="stat-pills" style="margin-bottom:14px;">
+        {% for row in by_teacher %}
+        <div class="stat-pill">
+          {{ row.teacher_name }}
+          <span class="stat-pill-count">{{ row.cnt }}次</span>
+          <span style="font-size:11px;color:var(--muted);">均 {{ "%.0f"|format(row.avg_score or 0) }}分</span>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div style="color:var(--muted);font-size:13px;">暂无带教老师数据（需文件名含老师姓名）</div>
+      {% endif %}
+
+      <h2 style="margin-top:20px;">🏥 科室提交统计</h2>
+      {% if by_dept %}
+      <div class="stat-pills">
+        {% for row in by_dept %}
+        <div class="stat-pill">
+          {{ row.department }}
+          <span class="stat-pill-count">{{ row.cnt }}次</span>
+          <span style="font-size:11px;color:var(--muted);">均 {{ "%.0f"|format(row.avg_score or 0) }}分</span>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div style="color:var(--muted);font-size:13px;">暂无科室数据（需文件名含科室信息）</div>
+      {% endif %}
+    </div>
+
+    <div class="card">
+      <h2>🔄 多轮评审追踪</h2>
+      {% if round_stats %}
+      <table class="table">
+        <thead>
+          <tr><th>课程</th><th>老师</th><th>轮次</th><th>首次分</th><th>最高分</th><th>最近时间</th></tr>
+        </thead>
+        <tbody>
+          {% for row in round_stats %}
+          <tr>
+            <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{ row.course }}">{{ row.course }}</td>
+            <td>{{ row.teacher_name or '—' }}</td>
+            <td><strong style="color:var(--blue-mid);">第{{ row.total_rounds }}轮</strong></td>
+            <td>{{ "%.0f"|format(row.first_score or 0) }}</td>
+            <td style="color:var(--green);font-weight:600;">{{ "%.0f"|format(row.best_score or 0) }}</td>
+            <td style="font-size:11px;color:var(--muted);">{{ row.last_reviewed[:10] }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div style="color:var(--muted);font-size:13px;">同一课程提交2次以上后，此处将显示轮次进步追踪。</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- 教案类型 / 问题分类 -->
+  <div class="dashboard-grid">
+    <div class="card">
+      <h2>📚 教案类型分布</h2>
+      <table class="table">
+        <thead><tr><th>类型</th><th>数量</th><th>平均分</th><th>平均 major 数</th></tr></thead>
+        <tbody>
+          {% for row in by_type %}
+          <tr>
+            <td>{{ row.doc_type }}</td>
+            <td>{{ row.cnt }}</td>
+            <td>{{ "%.1f"|format(row.avg_score or 0) }}</td>
+            <td>{{ "%.1f"|format(row.avg_major or 0) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h2>🏷️ 高频问题分类 Top 10</h2>
+      <table class="table">
+        <thead><tr><th>分类</th><th>频次</th></tr></thead>
+        <tbody>
+          {% for row in top_issue_categories %}
+          <tr><td>{{ row.issue_category }}</td><td><strong>{{ row.cnt }}</strong></td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- 最近记录 -->
+  <div class="card">
+    <h2>📋 最近 50 条记录</h2>
+    <div style="overflow-x:auto;">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>ID</th><th>时间</th><th>科室</th><th>老师</th><th>课程/文件</th>
+            <th>类型</th><th>总分</th><th>结论</th><th>轮次</th><th>major数</th><th>详情</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in recent_records %}
+          <tr>
+            <td>{{ row.id }}</td>
+            <td style="white-space:nowrap;font-size:12px;">{{ row.created_at[:16] }}</td>
+            <td>{{ row.department or '—' }}</td>
+            <td>{{ row.teacher_name or '—' }}</td>
+            <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+                title="{{ row.course_title or row.filename }}">
+              {{ row.course_title or row.filename or '粘贴文本' }}
+            </td>
+            <td style="white-space:nowrap;">{{ row.actual_type or row.declared_type or '—' }}</td>
+            <td><strong style="color:var(--blue-mid);">{{ row.score_total or '—' }}</strong></td>
+            <td>{{ '❌否决' if row.vetoed else (row.conclusion or '—') }}</td>
+            <td style="text-align:center;">第{{ row.review_round or 1 }}轮</td>
+            <td style="text-align:center;">{{ row.major_count or 0 }}</td>
+            <td><a href="/admin/record/{{ row.id }}">查看</a></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<style>
+.chart-wrap { position: relative; width: 100%; height: 220px; }
+.chart-wrap--doughnut { height: 220px; max-width: 300px; margin: 0 auto; }
+</style>
+
+<script>
+function initCharts() {
+  const daily = {{ daily|tojson }};
+  new Chart(document.getElementById('dailyChart'), {
+    data: {
+      labels: daily.map(x => x.day),
+      datasets: [
+        {
+          type: 'bar', label: '评审量', data: daily.map(x => x.cnt), yAxisID: 'y',
+          backgroundColor: 'rgba(37,99,235,0.2)', borderColor: 'rgba(37,99,235,0.7)',
+          borderWidth: 1.5, borderRadius: 5,
+        },
+        {
+          type: 'line', label: '平均分', data: daily.map(x => x.avg_score), yAxisID: 'y1',
+          borderColor: '#0d7a5f', backgroundColor: 'transparent',
+          pointRadius: 4, tension: 0.3, borderWidth: 2,
+        }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: { duration: 400 },
+      plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, padding: 14 } } },
+      scales: {
+        y:  { beginAtZero: true, grid: { color: '#dce6f5' } },
+        y1: { beginAtZero: true, max: 100, position: 'right', grid: { drawOnChartArea: false } }
+      }
+    }
+  });
+
+  const severity = {{ severity_counts|tojson }};
+  const COLORS = { fatal:'#c0392b', major:'#e67e22', minor:'#f1c40f', note:'#3498db' };
+  new Chart(document.getElementById('severityChart'), {
+    type: 'doughnut',
+    data: {
+      labels: severity.map(x => x.severity),
+      datasets: [{
+        data: severity.map(x => x.cnt),
+        backgroundColor: severity.map(x => COLORS[x.severity] || '#95a5a6'),
+        borderWidth: 2, borderColor: '#fff',
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: { duration: 400 },
+      plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, padding: 12 } } },
+      cutout: '62%',
+    }
+  });
+}
+
+if (typeof Chart !== 'undefined') initCharts();
+else window.addEventListener('load', initCharts);
+</script>
+{% endblock %}

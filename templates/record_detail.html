@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}记录详情{% endblock %}
+{% block body %}
+<div class="topbar">
+  <div class="container topbar-inner">
+    <div>
+      <h1>记录详情 #{{ record.id }}</h1>
+      <p>{{ record.created_at }} · {{ record.filename or '粘贴文本' }}</p>
+    </div>
+    <div class="toolbar">
+      <a class="btn ghost" href="/admin">返回后台</a>
+    </div>
+  </div>
+</div>
+
+<div class="container">
+  <section class="kpi-grid wide">
+    <div class="kpi"><span>申报类型</span><strong>{{ record.declared_type or '-' }}</strong></div>
+    <div class="kpi"><span>实质类型</span><strong>{{ record.actual_type or '-' }}</strong></div>
+    <div class="kpi"><span>总分</span><strong>{{ record.score_total or '-' }}</strong></div>
+    <div class="kpi"><span>结论</span><strong>{{ record.conclusion or '-' }}</strong></div>
+    <div class="kpi"><span>问题数</span><strong>{{ record.issue_count or 0 }}</strong></div>
+    <div class="kpi"><span>major 问题</span><strong>{{ record.major_count or 0 }}</strong></div>
+  </section>
+
+  <section class="card">
+    <h2>条款得分</h2>
+    <table class="table">
+      <thead><tr><th>条款</th><th>满分</th><th>实得分</th><th>证据位置</th><th>判定说明</th></tr></thead>
+      <tbody>
+        {% for row in clause_scores %}
+        <tr>
+          <td>{{ row.clause_name or row.clause_code }}</td>
+          <td>{{ row.max_score }}</td>
+          <td>{{ row.actual_score }}</td>
+          <td>{{ row.evidence_position }}</td>
+          <td>{{ row.judgment_text }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+
+  <section class="card">
+    <h2>问题列表</h2>
+    <table class="table">
+      <thead><tr><th>严重程度</th><th>一级分类</th><th>二级子类</th><th>问题描述</th><th>建议</th><th>证据位置</th></tr></thead>
+      <tbody>
+        {% for row in issues %}
+        <tr>
+          <td>{{ row.severity }}</td>
+          <td>{{ row.issue_category }}</td>
+          <td>{{ row.issue_subcategory }}</td>
+          <td>{{ row.issue_text }}</td>
+          <td>{{ row.suggestion_text }}</td>
+          <td>{{ row.evidence_position }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+
+  <section class="card">
+    <h2>报告正文</h2>
+    <pre class="markdown-box">{{ record.raw_markdown }}</pre>
+  </section>
+</div>
+{% endblock %}

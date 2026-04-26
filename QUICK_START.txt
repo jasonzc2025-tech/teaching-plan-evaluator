@@ -1,0 +1,8 @@
+路线A最短步骤：
+1. 在 ECS 安装 Docker 与 Docker Compose 插件
+2. 上传本目录到服务器（打包前可在本机执行：python scripts/prepare_deploy.py，清理 __pycache__ 并再生软著交存文本）
+3. cp .env.example .env
+4. 编辑 .env，填好 LLM_API_KEY、SECRET_KEY、ADMIN_PASSWORD
+5. docker compose up -d --build
+6. 开放安全组端口：外网访问建议只开 8081（经 Nginx）。5001 在 compose 中绑定 127.0.0.1，公网访问不到属正常。
+7. 浏览器访问 http://服务器IP:8081/ （本机调试用 curl http://127.0.0.1:5001/health 或 SSH 隧道）

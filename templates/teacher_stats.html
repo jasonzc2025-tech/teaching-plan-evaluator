@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}教师维度分析{% endblock %}
+{% block body %}
+<div class="topbar">
+  <div class="container topbar-inner">
+    <div>
+      <h1>教师维度分析</h1>
+      <p>{{ teacher_name }}</p>
+    </div>
+    <div class="toolbar">
+      <a class="btn ghost" href="/admin">返回后台</a>
+    </div>
+  </div>
+</div>
+
+<div class="container">
+  <section class="kpi-grid wide">
+    <div class="kpi"><span>评审次数</span><strong>{{ summary.record_count }}</strong></div>
+    <div class="kpi"><span>平均总分</span><strong>{{ summary.avg_score }}</strong></div>
+    <div class="kpi"><span>平均 major</span><strong>{{ summary.avg_major }}</strong></div>
+    <div class="kpi"><span>平均 fatal</span><strong>{{ summary.avg_fatal }}</strong></div>
+    <div class="kpi"><span>平均缓冲扣分</span><strong>{{ summary.avg_buffer_deduction }}</strong></div>
+  </section>
+
+  <section class="card">
+    <h2>90天分数趋势</h2>
+    <canvas id="teacherTrendChart" height="200"></canvas>
+  </section>
+
+  <div class="dashboard-grid">
+    <section class="card">
+      <h2>高频问题分类</h2>
+      <table class="table">
+        <thead><tr><th>问题分类</th><th>频次</th></tr></thead>
+        <tbody>
+          {% for row in top_issue_categories %}
+          <tr><td>{{ row.issue_category }}</td><td>{{ row.cnt }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+
+    <section class="card">
+      <h2>最近记录</h2>
+      <table class="table">
+        <thead><tr><th>ID</th><th>时间</th><th>类型</th><th>总分</th><th>结论</th><th>major</th></tr></thead>
+        <tbody>
+          {% for row in recent_records %}
+          <tr>
+            <td><a href="/admin/record/{{ row.id }}">{{ row.id }}</a></td>
+            <td>{{ row.created_at }}</td>
+            <td>{{ row.actual_type or row.declared_type or '-' }}</td>
+            <td>{{ row.score_total or 0 }}</td>
+            <td>{{ row.conclusion or '-' }}</td>
+            <td>{{ row.major_count or 0 }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+  </div>
+</div>
+
+<script>
+const teacherTrend = {{ trend|tojson }};
+new Chart(document.getElementById('teacherTrendChart'), {
+  type: 'line',
+  data: {
+    labels: teacherTrend.map(x => x.day),
+    datasets: [{
+      label: '平均总分',
+      data: teacherTrend.map(x => x.avg_score || 0),
+      borderColor: '#3e95cd',
+      fill: false,
+    }]
+  },
+  options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    scales: { y: { beginAtZero: true, max: 100 } }
+  }
+});
+</script>
+{% endblock %}

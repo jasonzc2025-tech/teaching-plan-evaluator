@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% block title %}教案多轮对比{% endblock %}
+{% block body %}
+<div class="topbar">
+  <div class="container topbar-inner">
+    <div>
+      <h1>教案多轮对比</h1>
+      <p>{{ base_record.teacher_name or '教师未知' }} · {{ base_record.course_title or '课程未知' }} · {{ base_record.filename or '粘贴文本' }}</p>
+    </div>
+    <div class="toolbar">
+      <a class="btn ghost" href="/admin">返回后台</a>
+    </div>
+  </div>
+</div>
+
+<div class="container">
+  <section class="kpi-grid wide">
+    <div class="kpi"><span>当前轮次</span><strong>{{ base_record.review_round }}</strong></div>
+    <div class="kpi"><span>总分</span><strong>{{ base_record.score_total or 0 }}</strong></div>
+    <div class="kpi"><span>调整后</span><strong>{{ base_record.adjusted_score or 0 }}</strong></div>
+    <div class="kpi"><span>结论</span><strong>{{ base_record.conclusion or '-' }}</strong></div>
+    <div class="kpi"><span>major 数</span><strong>{{ base_record.major_count or 0 }}</strong></div>
+    <div class="kpi"><span>fatal 数</span><strong>{{ base_record.fatal_count or 0 }}</strong></div>
+  </section>
+
+  <section class="card">
+    <h2>分数与问题趋势</h2>
+    <canvas id="compareChart" height="200"></canvas>
+  </section>
+
+  <section class="card">
+    <h2>轮次详情</h2>
+    <table class="table">
+      <thead>
+        <tr><th>轮次</th><th>时间</th><th>总分</th><th>调整后</th><th>结论</th><th>major</th><th>fatal</th><th>问题数</th><th>缓冲带</th></tr>
+      </thead>
+      <tbody>
+        {% for row in rounds %}
+        <tr>
+          <td>{{ row.review_round or '-' }}</td>
+          <td>{{ row.created_at }}</td>
+          <td>{{ row.score_total or 0 }}</td>
+          <td>{{ row.adjusted_score or 0 }}</td>
+          <td>{{ row.conclusion or '-' }}</td>
+          <td>{{ row.major_count or 0 }}</td>
+          <td>{{ row.fatal_count or 0 }}</td>
+          <td>{{ row.issue_count or 0 }}</td>
+          <td>{{ row.buffer_level or '无' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+
+  <div class="dashboard-grid">
+    <section class="card">
+      <h2>新增问题</h2>
+      {% if new_issues %}
+      <ul>
+        {% for issue in new_issues %}
+        <li><strong>{{ issue.issue_category }}</strong> / {{ issue.issue_subcategory }}：{{ issue.issue_text }}</li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p>无新增问题。</p>
+      {% endif %}
+    </section>
+
+    <section class="card">
+      <h2>减少问题</h2>
+      {% if removed_issues %}
+      <ul>
+        {% for issue in removed_issues %}
+        <li><strong>{{ issue.issue_category }}</strong> / {{ issue.issue_subcategory }}：{{ issue.issue_text }}</li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p>无已消减问题。</p>
+      {% endif %}
+    </section>
+  </div>
+</div>
+
+<script>
+const compareRounds = {{ rounds|tojson }};
+new Chart(document.getElementById('compareChart'), {
+  data: {
+    labels: compareRounds.map(x => x.review_round || ''),
+    datasets: [
+      {
+        type: 'line',
+        label: '总分',
+        data: compareRounds.map(x => x.score_total || 0),
+        borderColor: '#3e95cd',
+        fill: false,
+        yAxisID: 'y',
+      },
+      {
+        type: 'line',
+        label: '调整后',
+        data: compareRounds.map(x => x.adjusted_score || 0),
+        borderColor: '#8e5ea2',
+        fill: false,
+        yAxisID: 'y',
+      },
+      {
+        type: 'bar',
+        label: 'major 问题数',
+        data: compareRounds.map(x => x.major_count || 0),
+        backgroundColor: '#f39c12',
+        yAxisID: 'y1',
+      }
+    ]
+  },
+  options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    scales: {
+      y: { beginAtZero: true, max: 100, title: { display: true, text: '分数' } },
+      y1: { beginAtZero: true, position: 'right', title: { display: true, text: '问题数' } }
+    }
+  }
+});
+</script>
+{% endblock %}

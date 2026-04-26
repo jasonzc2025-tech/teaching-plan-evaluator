@@ -1,0 +1,25 @@
+services:
+  web:
+    build: .
+    container_name: teaching-plan-evaluator-webapp
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DB_PATH: /app/instance/eval_records.db
+    volumes:
+      - ./instance:/app/instance
+      - ./data/uploads:/app/data/uploads
+    ports:
+      - "127.0.0.1:5001:5000"
+
+  nginx:
+    image: nginx:stable-alpine
+    container_name: teaching-plan-evaluator-nginx
+    restart: unless-stopped
+    depends_on:
+      - web
+    ports:
+      - "8081:80"
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro

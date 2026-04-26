@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}后台登录{% endblock %}
+{% block body %}
+<div class="login-wrap">
+  <div class="login-card">
+    <h1>后台登录</h1>
+    <p class="muted">请输入管理密码</p>
+    {% if error %}<div class="error-box">{{ error }}</div>{% endif %}
+    <form method="post" class="form-grid">
+      <label class="full">管理密码
+        <input type="password" name="password" autofocus>
+      </label>
+      <div class="full">
+        <button class="btn primary" type="submit">登录</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
