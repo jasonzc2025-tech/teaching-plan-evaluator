@@ -8,3 +8,6 @@ logs/
 *.db
 .dockerignore
 artifacts/
+*.swo
+*.swp
+nohup.out
