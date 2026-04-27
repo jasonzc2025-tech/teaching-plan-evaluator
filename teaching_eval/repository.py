@@ -311,59 +311,81 @@ def export_table_rows(db_path: str, table_name: str) -> List[Dict]:
     return rows
 
 
-def fetch_compare_data(db_path: str) -> Dict:
-    """按课程/文件名分组，返回多轮评审对比数据。"""
+
+def fetch_teacher_stats(db_path, teacher_name):
     conn = get_connection(db_path)
-    rows = [dict(row) for row in conn.execute(
-        """
-        SELECT
-            COALESCE(course_title, filename, '未知') AS course,
-            teacher_name, department,
-            COUNT(*) AS total_rounds,
-            MIN(score_total) AS first_score,
-            MAX(score_total) AS best_score,
-            MAX(created_at) AS last_reviewed
-        FROM records
-        WHERE course_title IS NOT NULL AND course_title <> ''
-        GROUP BY COALESCE(course_title, filename, '未知')
-        HAVING COUNT(*) > 1
-        ORDER BY total_rounds DESC, last_reviewed DESC
-        LIMIT 30
-        """
-    ).fetchall()]
+    row = conn.execute("SELECT COUNT(*) AS record_count, ROUND(AVG(score_total),1) AS avg_score, ROUND(AVG(major_count),1) AS avg_major, ROUND(AVG(fatal_count),1) AS avg_fatal, ROUND(AVG(buffer_deduction),1) AS avg_buffer_deduction FROM records WHERE teacher_name=?", (teacher_name,)).fetchone()
+    if not row or row["record_count"] == 0:
+        conn.close()
+        return {}
+    summary = {k: (row[k] if row[k] is not None else 0) for k in row.keys()}
+    recent = [dict(r) for r in conn.execute("SELECT id, created_at, declared_type, actual_type, score_total, conclusion, major_count FROM records WHERE teacher_name=? ORDER BY id DESC LIMIT 30", (teacher_name,)).fetchall()]
+    cats = [dict(r) for r in conn.execute("SELECT i.issue_category, COUNT(*) AS cnt FROM record_issues i JOIN records r ON r.id=i.record_id WHERE r.teacher_name=? GROUP BY i.issue_category ORDER BY cnt DESC LIMIT 10", (teacher_name,)).fetchall()]
+    trend = [dict(r) for r in conn.execute("SELECT substr(created_at,1,10) AS day, AVG(score_total) AS avg_score FROM records WHERE teacher_name=? GROUP BY substr(created_at,1,10) ORDER BY day ASC", (teacher_name,)).fetchall()]
     conn.close()
-    return {"compare": rows}
+    return {"teacher_name": teacher_name, "summary": summary, "recent_records": recent, "top_issue_categories": cats, "trend": trend}
 
 
-def fetch_teacher_stats(db_path: str) -> List[Dict]:
-    """按带教老师统计提交次数和平均分。"""
+def fetch_department_stats(db_path):
     conn = get_connection(db_path)
-    rows = [dict(row) for row in conn.execute(
-        """
-        SELECT teacher_name, COUNT(*) AS cnt, AVG(score_total) AS avg_score
-        FROM records
-        WHERE teacher_name IS NOT NULL AND teacher_name <> ''
-        GROUP BY teacher_name
-        ORDER BY cnt DESC
-        LIMIT 30
-        """
-    ).fetchall()]
+    overview = [dict(r) for r in conn.execute("SELECT department, COUNT(*) AS cnt, ROUND(AVG(score_total),1) AS avg_score, ROUND(AVG(major_count),1) AS avg_major, ROUND(AVG(fatal_count),1) AS avg_fatal, ROUND(100.0*SUM(CASE WHEN buffer_deduction>0 THEN 1 ELSE 0 END)/COUNT(*),1) AS buffer_rate FROM records WHERE department IS NOT NULL AND department<>'' GROUP BY department ORDER BY cnt DESC").fetchall()]
+    issues = [dict(r) for r in conn.execute("SELECT issue_category, COUNT(*) AS cnt FROM record_issues WHERE issue_category IS NOT NULL AND issue_category<>'' GROUP BY issue_category ORDER BY cnt DESC LIMIT 10").fetchall()]
+    types = [dict(r) for r in conn.execute("SELECT COALESCE(actual_type, declared_type, '未知') AS doc_type, COUNT(*) AS cnt FROM records GROUP BY COALESCE(actual_type, declared_type, '未知') ORDER BY cnt DESC").fetchall()]
     conn.close()
-    return rows
+    return {"department_overview": overview, "issue_distribution": issues, "type_distribution": types}
 
 
-def fetch_department_stats(db_path: str) -> List[Dict]:
-    """按科室统计提交次数和平均分。"""
+def fetch_compare_data(db_path, record_id):
     conn = get_connection(db_path)
-    rows = [dict(row) for row in conn.execute(
-        """
-        SELECT department, COUNT(*) AS cnt, AVG(score_total) AS avg_score
-        FROM records
-        WHERE department IS NOT NULL AND department <> ''
-        GROUP BY department
-        ORDER BY cnt DESC
-        LIMIT 30
-        """
-    ).fetchall()]
+    base = conn.execute("SELECT * FROM records WHERE id=?", (record_id,)).fetchone()
+    if not base:
+        conn.close()
+        return {}
+    base_record = dict(base)
+
+    # 找同一课程或同一文件名的所有轮次
+    course_key = base_record.get("course_title") or base_record.get("filename") or ""
+    if not course_key:
+        rounds = [base_record]
+    else:
+        rounds = [dict(r) for r in conn.execute(
+            "SELECT * FROM records WHERE COALESCE(course_title, filename, '') = ? ORDER BY id ASC",
+            (course_key,)
+        ).fetchall()]
+
+    # 找上一轮（用于对比新增/解决的问题）
+    prev_record = None
+    for r in rounds:
+        if r["id"] == record_id:
+            break
+        prev_record = r
+
+    new_issues = []
+    removed_issues = []
+
+    if prev_record:
+        cur_issues = [dict(r) for r in conn.execute(
+            "SELECT issue_category, issue_subcategory, issue_text FROM record_issues WHERE record_id=?",
+            (record_id,)
+        ).fetchall()]
+        prev_issues = [dict(r) for r in conn.execute(
+            "SELECT issue_category, issue_subcategory, issue_text FROM record_issues WHERE record_id=?",
+            (prev_record["id"],)
+        ).fetchall()]
+
+        def key(i):
+            return (i.get("issue_category", ""), i.get("issue_subcategory", ""), (i.get("issue_text", "") or "")[:40])
+
+        prev_keys = {key(i) for i in prev_issues}
+        cur_keys = {key(i) for i in cur_issues}
+
+        new_issues = [i for i in cur_issues if key(i) not in prev_keys]
+        removed_issues = [i for i in prev_issues if key(i) not in cur_keys]
+
     conn.close()
-    return rows
+    return {
+        "base_record": base_record,
+        "rounds": rounds,
+        "new_issues": new_issues,
+        "removed_issues": removed_issues,
+    }

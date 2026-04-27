@@ -36,16 +36,17 @@
   <div class="dashboard-grid">
     <section class="card">
       <h2>问题分类分布</h2>
-      <canvas id="issueCategoryChart" height="220"></canvas>
+      <div class="chart-wrap"><canvas id="issueCategoryChart"></canvas></div>
     </section>
 
     <section class="card">
       <h2>教案类型分布</h2>
-      <canvas id="typeDistributionChart" height="220"></canvas>
+      <div class="chart-wrap"><canvas id="typeDistributionChart"></canvas></div>
     </section>
   </div>
 </div>
 
+<style>.chart-wrap{position:relative;width:100%;height:240px;}</style>
 <script>
 const issueDistribution = {{ issue_distribution|tojson }};
 new Chart(document.getElementById('issueCategoryChart'), {

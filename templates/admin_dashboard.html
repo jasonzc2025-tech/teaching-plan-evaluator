@@ -12,6 +12,7 @@
       </div>
     </div>
     <div class="toolbar">
+      <a class="btn ghost" href="{{ url_for('admin.department_stats') }}">📊 科室统计</a>
       <a class="btn ghost" href="/admin/export/records.csv">⬇ 导出记录表</a>
       <a class="btn ghost" href="/admin/export/record_issues.csv">⬇ 导出问题表</a>
       <a class="btn ghost" href="/admin/export/clause_scores.csv">⬇ 导出条款表</a>
@@ -55,11 +56,11 @@
       {% if by_teacher %}
       <div class="stat-pills" style="margin-bottom:14px;">
         {% for row in by_teacher %}
-        <div class="stat-pill">
+        <a class="stat-pill" href="{{ url_for('admin.teacher_stats', teacher_name=row.teacher_name) }}">
           {{ row.teacher_name }}
           <span class="stat-pill-count">{{ row.cnt }}次</span>
           <span style="font-size:11px;color:var(--muted);">均 {{ "%.0f"|format(row.avg_score or 0) }}分</span>
-        </div>
+        </a>
         {% endfor %}
       </div>
       {% else %}
@@ -148,7 +149,7 @@
         <thead>
           <tr>
             <th>ID</th><th>时间</th><th>科室</th><th>老师</th><th>课程/文件</th>
-            <th>类型</th><th>总分</th><th>结论</th><th>轮次</th><th>major数</th><th>详情</th>
+            <th>类型</th><th>总分</th><th>结论</th><th>轮次</th><th>major数</th><th>详情</th><th>对比</th>
           </tr>
         </thead>
         <tbody>
@@ -158,8 +159,7 @@
             <td style="white-space:nowrap;font-size:12px;">{{ row.created_at[:16] }}</td>
             <td>{{ row.department or '—' }}</td>
             <td>{{ row.teacher_name or '—' }}</td>
-            <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
-                title="{{ row.course_title or row.filename }}">
+            <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{ row.course_title or row.filename }}">
               {{ row.course_title or row.filename or '粘贴文本' }}
             </td>
             <td style="white-space:nowrap;">{{ row.actual_type or row.declared_type or '—' }}</td>
@@ -167,7 +167,8 @@
             <td>{{ '❌否决' if row.vetoed else (row.conclusion or '—') }}</td>
             <td style="text-align:center;">第{{ row.review_round or 1 }}轮</td>
             <td style="text-align:center;">{{ row.major_count or 0 }}</td>
-            <td><a href="/admin/record/{{ row.id }}">查看</a></td>
+            <td><a href="{{ url_for('admin.record_detail', record_id=row.id) }}">查看</a></td>
+            <td><a href="{{ url_for('admin.compare_review_rounds', record_id=row.id) }}">比较</a></td>
           </tr>
           {% endfor %}
         </tbody>
@@ -205,7 +206,7 @@ function initCharts() {
       responsive: true, maintainAspectRatio: false, animation: { duration: 400 },
       plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, padding: 14 } } },
       scales: {
-        y:  { beginAtZero: true, grid: { color: '#dce6f5' } },
+        y: { beginAtZero: true, grid: { color: '#dce6f5' } },
         y1: { beginAtZero: true, max: 100, position: 'right', grid: { drawOnChartArea: false } }
       }
     }
