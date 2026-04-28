@@ -1,7 +1,7 @@
 from pathlib import Path
 
 
-PROMPT_VERSION = "prompt-rc-v2"
+PROMPT_VERSION = "prompt-v3.1"
 PROMPT_BLOCKS_DIR = Path(__file__).resolve().parent / "prompt_blocks"
 
 TYPE_TO_BLOCK = {

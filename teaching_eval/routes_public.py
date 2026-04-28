@@ -6,6 +6,7 @@ from .llm_client import LLMClient
 from .parser import coerce_result, count_issue_severity, extract_json_and_markdown
 from .prompts import PROMPT_VERSION, build_system_prompt
 from .repository import save_evaluation
+from .scoring_controller import apply_scoring_rules
 from .services import get_text_content
 
 
@@ -15,6 +16,27 @@ public_bp = Blueprint("public", __name__)
 @public_bp.route("/")
 def index():
     return render_template("index.html")
+
+
+@public_bp.route("/get_round", methods=["GET"])
+def get_round():
+    """根据老师名+课程名查询下一轮次。"""
+    teacher = request.args.get("teacher_name", "").strip()
+    course = request.args.get("course_title", "").strip()
+    if not teacher or not course:
+        return jsonify({"round": 1})
+    try:
+        import sqlite3
+        conn = sqlite3.connect(current_app.config["DB_PATH"])
+        row = conn.execute(
+            "SELECT COUNT(*) FROM records WHERE teacher_name=? AND course_title=?",
+            (teacher, course)
+        ).fetchone()
+        conn.close()
+        next_round = (row[0] or 0) + 1
+        return jsonify({"round": next_round})
+    except Exception as e:
+        return jsonify({"round": 1, "error": str(e)})
 
 
 @public_bp.route("/health")
@@ -106,6 +128,29 @@ def evaluate_stream():
             structured = coerce_result(structured, markdown)
             severity_counts = count_issue_severity(structured["issues"])
             summary = structured["summary"]
+
+            # V3.1 代码层评分修正（流式接口也要执行）
+            scoring_result = apply_scoring_rules(
+                llm_score_general=summary.get("score_general", 0),
+                llm_score_specific=summary.get("score_specific", 0),
+                llm_score_total=summary.get("score_total", 0),
+                llm_adjusted_score=summary.get("adjusted_score", summary.get("score_total", 0)),
+                tci=structured.get("tci", {}),
+                issues=structured.get("issues", []),
+                vetoed=summary.get("vetoed", False),
+                buffer_level=summary.get("buffer_level", "无"),
+                buffer_deduction=summary.get("buffer_deduction", 0),
+            )
+            # 用代码层结果覆盖 LLM 原始分数
+            summary["score_general"] = scoring_result["score_general"]
+            summary["score_specific"] = scoring_result["score_specific"]
+            summary["score_total"] = scoring_result["score_total"]
+            summary["adjusted_score"] = scoring_result["adjusted_score"]
+            summary["buffer_level"] = scoring_result["buffer_level"]
+            summary["buffer_deduction"] = scoring_result["buffer_deduction"]
+            summary["vetoed"] = scoring_result["vetoed"]
+            summary["conclusion"] = scoring_result["conclusion"]
+
 
             result = {
                 "filename": metadata.get("filename", ""),

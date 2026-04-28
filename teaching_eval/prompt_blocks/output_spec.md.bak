@@ -89,17 +89,7 @@ JSON 结构如下（字段名必须一致）：
    - 再减去 `buffer_deduction` 和 TCI 修正扣分
    - 若触发上限锁定，则 `adjusted_score` 不超过锁定上限（55 或 60 或 65）
    - 最终值最低不小于 0
-### Buffer 规则（代码层强制执行）
-根据 `issues` 中 `severity=fatal` 和 `severity=major` 的数量，计算 `buffer_level` 和 `buffer_deduction`：
-
-| fatal 数量 | major 数量 | buffer_level | buffer_deduction |
-|-----------|-----------|-------------|-----------------|
-| ≥ 1 | — | **红色** | **10** |
-| 0 | ≥ 3 | **橙色** | **5** |
-| 0 | ≥ 1 | **黄色** | **3** |
-| 0 | 0 | 无 | 0 |
-
-说明：`buffer_level` 与 `buffer_deduction` 仅用于表达非否决类高风险问题的额外扣分，不替代否决。
+4. `buffer_level` 与 `buffer_deduction` 仅用于表达非否决类高风险问题的额外扣分，不替代否决。
 5. `clause_scores` 必须同时包含通用维度（G1-G6）和分项维度（S1-S4/S5）的所有条款，两套独立评分，不得合并或省略任一维度。
 
 ### TCI 四级修正规则（代码层强制执行）

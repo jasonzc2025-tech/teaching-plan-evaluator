@@ -11,7 +11,7 @@ MARKDOWN_PATTERN = re.compile(
     r"<REPORT_MARKDOWN>\s*(.*?)\s*</REPORT_MARKDOWN>",
     flags=re.DOTALL,
 )
-ALLOWED_CONCLUSIONS = {"优秀", "良好", "中等", "及格", "不及格"}
+ALLOWED_CONCLUSIONS = {"优秀", "良好", "中等", "及格", "不合格"}
 
 
 def _safe_number(value: Any, default: float = 0) -> float:
@@ -48,7 +48,7 @@ def build_fallback_summary(markdown_text: str) -> Dict[str, Any]:
     score_total = _search_number(markdown_text, r"总分[^:：]*[:：]\s*(\d+(?:\.\d+)?)")
     declared_type = _search_text(markdown_text, r"教案类型[:：]\s*([^\n（(]+)")
     conclusion = _search_text(markdown_text, r"评分结论[:：]\s*([^\n]+)")
-    vetoed = False
+    vetoed = bool(re.search(r"是否触发否决项[:：]\s*是|否决[:：]\s*是", markdown_text))
     adjusted_score = _safe_number(score_total)
     buffer_deduction = 0
     buffer_level = "无"
@@ -100,8 +100,8 @@ def _normalize_conclusion(value: str, adjusted_score: float) -> str:
     mapping = {
         "合格": "及格",
         "基本合格": "及格",
-        "不合格": "不及格",
-        "否决": "不及格",
+        "否决": "不合格",
+        "不及格": "不合格",
     }
     if value in mapping:
         return mapping[value]
@@ -121,10 +121,14 @@ def coerce_result(structured: Dict[str, Any], markdown_text: str) -> Dict[str, A
     if summary["adjusted_score"] <= 0 and summary["score_total"] > 0:
         summary["adjusted_score"] = max(0, summary["score_total"] - summary["buffer_deduction"])
     summary["buffer_level"] = str(summary.get("buffer_level") or "无")
-    summary["vetoed"] = False
+    summary["vetoed"] = bool(summary.get("vetoed"))
     summary["declared_type"] = summary.get("declared_type") or "未知"
     summary["actual_type"] = summary.get("actual_type") or summary["declared_type"]
-    summary["conclusion"] = _normalize_conclusion(str(summary.get("conclusion") or ""), summary["adjusted_score"])
+    # 若触发否决，强制结论为不合格
+    if summary["vetoed"]:
+        summary["conclusion"] = "不合格"
+    else:
+        summary["conclusion"] = _normalize_conclusion(str(summary.get("conclusion") or ""), summary["adjusted_score"])
 
     clause_scores = structured.get("clause_scores") or []
     issues = structured.get("issues") or []

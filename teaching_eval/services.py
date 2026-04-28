@@ -6,6 +6,7 @@ from .extractors import allowed_file, extract_text_from_docx, extract_text_from_
 from .llm_client import LLMClient
 from .parser import coerce_result, count_issue_severity, extract_json_and_markdown
 from .prompts import PROMPT_VERSION, build_system_prompt
+from .scoring_controller import apply_scoring_rules
 
 
 def get_text_content(flask_request, allowed_extensions, min_len, max_len):
@@ -78,6 +79,28 @@ def evaluate_text(app_config: Dict, text_content: str, metadata: Dict) -> Dict:
     tci = structured.get("tci", {})
     objective_matrix = structured.get("objective_matrix", {})
     severity_counts = count_issue_severity(structured["issues"])
+
+    # ── 代码层评分控制器修正（V3.1）──
+    scoring_result = apply_scoring_rules(
+        llm_score_general=summary.get("score_general", 0),
+        llm_score_specific=summary.get("score_specific", 0),
+        llm_score_total=summary.get("score_total", 0),
+        llm_adjusted_score=summary.get("adjusted_score", summary.get("score_total", 0)),
+        tci=tci,
+        issues=structured.get("issues", []),
+        vetoed=summary.get("vetoed", False),
+        buffer_level=summary.get("buffer_level", "无"),
+        buffer_deduction=summary.get("buffer_deduction", 0),
+    )
+    # 用代码层计算结果覆盖 LLM 原始输出
+    summary["score_general"] = scoring_result["score_general"]
+    summary["score_specific"] = scoring_result["score_specific"]
+    summary["score_total"] = scoring_result["score_total"]
+    summary["adjusted_score"] = scoring_result["adjusted_score"]
+    summary["buffer_level"] = scoring_result["buffer_level"]
+    summary["buffer_deduction"] = scoring_result["buffer_deduction"]
+    summary["vetoed"] = scoring_result["vetoed"]
+    summary["conclusion"] = scoring_result["conclusion"]
 
     result = {
         "filename": metadata.get("filename", ""),

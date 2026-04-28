@@ -9,7 +9,7 @@
       <div>
         <h1>住培临床教案质量智能评审系统</h1>
         <div class="topbar-tags">
-          <span class="topbar-tag">V3.0</span>
+          <span class="topbar-tag">V3.1</span>
           <span class="topbar-tag">五类教案</span>
           <span class="topbar-tag">百分制</span>
           <span class="topbar-tag">条款级证据驱动</span>
@@ -37,6 +37,7 @@
 .conclusion-row.good{background:var(--blue-light);color:var(--blue-mid);border-color:#93c5fd;}
 .conclusion-row.pass{background:var(--amber-light);color:var(--amber);border-color:#fcd34d;}
 .conclusion-row.fail{background:#fff7ed;color:#c2410c;border-color:#fdba74;}
+.conclusion-row.medium{background:#fef9c3;color:#854d0e;border-color:#fde047;}
 .conclusion-row.veto{background:var(--red-light);color:var(--red);border-color:#fca5a5;}
 .stream-bar{display:none;margin:0 24px 8px;align-items:center;gap:8px;padding:7px 12px;background:var(--blue-light);border-radius:8px;font-size:12px;color:var(--blue-mid);flex-shrink:0;}
 .stream-bar.show{display:flex;}
@@ -200,7 +201,20 @@ function parseFilenameMetadata(filename){
   document.getElementById('meta-dept').textContent=dept.trim();
   document.getElementById('meta-teacher').textContent=teacher.trim();
   document.getElementById('meta-course').textContent=course.trim();
-  document.getElementById('meta-round').textContent='第 1 轮（后台自动统计）';
+  document.getElementById('meta-round').textContent='查询中…';
+  // 查询实际轮次
+  var t=dept.trim(),c=course.trim();
+  if(teacher.trim()&&c){
+    fetch('/get_round?teacher_name='+encodeURIComponent(teacher.trim())+'&course_title='+encodeURIComponent(c))
+      .then(function(r){return r.json();})
+      .then(function(d){
+        document.getElementById('meta-round').textContent='第 '+d.round+' 轮';
+        document.getElementById('meta-round').dataset.round=d.round;
+      })
+      .catch(function(){document.getElementById('meta-round').textContent='第 1 轮';});
+  } else {
+    document.getElementById('meta-round').textContent='第 1 轮';
+  }
 }
 
 function escapeHtml(t){return(t||'').replace(/[&<>"']/g,function(m){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m];});}
@@ -268,10 +282,11 @@ function updateScoreFromData(summary){
   var veto=summary.vetoed;
   var con=summary.conclusion||'';
   var cls,icon;
-  if(veto){cls='veto';icon='⛔';con='触发否决项 · 不及格';}
-  else if(con.includes('优秀')){cls='excellent';icon='🏆';}
-  else if(con.includes('良好')){cls='good';icon='✅';}
-  else if(con.includes('合格')&&!con.includes('不合格')){cls='pass';icon='⚠️';}
+  if(veto){cls='veto';icon='⛔';con='触发否决项 · 不合格';}
+  else if(con==='优秀'){cls='excellent';icon='🏆';}
+  else if(con==='良好'){cls='good';icon='✅';}
+  else if(con==='中等'){cls='medium';icon='🔵';}
+  else if(con==='及格'){cls='pass';icon='⚠️';}
   else{cls='fail';icon='🔴';if(!con)con='不合格';}
   setConclusionBanner(cls,icon,con);
 }
@@ -308,15 +323,18 @@ async function submitEval(){
     formData.append('department',document.getElementById('meta-dept').textContent.replace('—',''));
     formData.append('teacher_name',document.getElementById('meta-teacher').textContent.replace('—',''));
     formData.append('course_title',document.getElementById('meta-course').textContent.replace('—',''));
-    formData.append('review_round','1');
+    var roundEl=document.getElementById('meta-round');
+    var roundVal=roundEl.dataset.round||'1';
+    formData.append('review_round',roundVal);
 
     var response=await fetch('/evaluate_stream',{method:'POST',body:formData});
     if(!response.ok)throw new Error('HTTP '+response.status);
 
     var reader=response.body.getReader();
     var decoder=new TextDecoder('utf-8');
-    var buffer='',finalData=null;
+    var buffer='',fullText='',finalData=null;
     var tokenCount=0;
+    var jsonExtracted=false, mdStarted=false, mdBuffer='';
 
     while(true){
       var res=await reader.read();
@@ -334,7 +352,62 @@ async function submitEval(){
           if(chunk.error)throw new Error(chunk.error);
           if(chunk.token!==undefined){
             tokenCount++;
+            fullText+=chunk.token;
             if(tokenCount===1)document.getElementById('stream-status').textContent='AI正在逐条分析…';
+
+            // 实时解析分数：一旦 JSON 区块完整，立即提取
+            if(!jsonExtracted){
+              var jsStart=fullText.indexOf('<STRUCTURED_JSON>');
+              var jsEnd=fullText.indexOf('</STRUCTURED_JSON>');
+              if(jsStart!==-1&&jsEnd!==-1&&jsEnd>jsStart){
+                var jsonStr=fullText.slice(jsStart+17,jsEnd).trim();
+                try{
+                  var parsed=JSON.parse(jsonStr);
+                  var summary=parsed.summary||{};
+                  if(summary.score_total!=null||summary.adjusted_score!=null){
+                    updateScoreFromData(summary);
+                    jsonExtracted=true;
+                    document.getElementById('placeholder').style.display='none';
+                    document.getElementById('result-panel').style.display='block';
+                    // 条款数据也提前渲染（如果有）
+                    var clauses=parsed.clause_scores||[];
+                    if(clauses.length){
+                      var rows=clauses.map(function(c){
+                        return '<tr><td>'+escapeHtml(c.clause_name||c.clause_code||'—')+'</td><td>'+(c.max_score!=null?c.max_score:'—')+'</td><td><strong style="color:var(--blue-mid)">'+(c.actual_score!=null?c.actual_score:'—')+'</strong></td><td style="color:var(--muted);font-size:12px;">'+escapeHtml(c.evidence_position||'—')+'</td><td>'+escapeHtml(c.judgment_text||'—')+'</td></tr>';
+                      }).join('');
+                      document.getElementById('clause-table').innerHTML='<table class="table"><thead><tr><th>条款</th><th>满分</th><th>实得</th><th>证据</th><th>说明</th></tr></thead><tbody>'+rows+'</tbody></table>';
+                    }
+                    // 问题列表也提前渲染
+                    var issues=parsed.issues||[];
+                    var issueList=document.getElementById('issue-list');
+                    issueList.innerHTML='';
+                    issues.forEach(function(item,j){
+                      var div=document.createElement('div');
+                      div.className='issue-item';
+                      div.innerHTML='<div class="issue-head"><span class="badge '+badgeClass(item.severity)+'">'+escapeHtml(item.severity||'minor')+'</span><strong>'+escapeHtml(item.issue_category||'未分类')+'</strong><span style="color:var(--muted);font-size:12px;"> '+escapeHtml(item.clause_name||'')+'</span></div><div style="margin-bottom:4px;">'+escapeHtml(item.issue_text||'')+'</div><div style="color:var(--muted);font-size:12px;">📍 '+escapeHtml(item.evidence_position||'—')+'</div><div style="color:var(--muted);font-size:12px;margin-top:2px;">💡 '+escapeHtml(item.suggestion_text||'—')+'</div>';
+                      issueList.appendChild(div);
+                    });
+                  }
+                }catch(e){}
+              }
+            }
+
+            // 实时渲染 Markdown 报告
+            if(!mdStarted&&fullText.indexOf('<REPORT_MARKDOWN>')!==-1){
+              mdStarted=true;
+            }
+            if(mdStarted){
+              var mdPos=fullText.indexOf('<REPORT_MARKDOWN>');
+              if(mdPos!==-1){
+                var currentMd=fullText.slice(mdPos+17);
+                var mdEnd=currentMd.indexOf('</REPORT_MARKDOWN>');
+                if(mdEnd!==-1)currentMd=currentMd.slice(0,mdEnd);
+                if(currentMd!==mdBuffer){
+                  mdBuffer=currentMd;
+                  document.getElementById('markdown-box').textContent=mdBuffer;
+                }
+              }
+            }
           }
           if(chunk.done){finalData=chunk;lastMarkdown=chunk.result_markdown||'';}
         }catch(e){
@@ -359,6 +432,17 @@ async function submitEval(){
 function renderFinalResult(data){
   var summary=data.summary||{};
   updateScoreFromData(summary);
+  // 用adjusted_score重算等第，不依赖LLM的conclusion
+  var adj=summary.adjusted_score!=null?Number(summary.adjusted_score):Number(summary.score_total||0);
+  var veto=summary.vetoed;
+  var con,cls,icon;
+  if(veto){cls='veto';icon='⛔';con='触发否决项';}
+  else if(adj>=90){cls='excellent';icon='🏆';con='优秀';}
+  else if(adj>=80){cls='good';icon='✅';con='良好';}
+  else if(adj>=70){cls='medium';icon='🔵';con='中等';}
+  else if(adj>=60){cls='pass';icon='⚠️';con='及格';}
+  else{cls='fail';icon='🔴';con='不及格';}
+  setConclusionBanner(cls,icon,con);
   lastMarkdown=data.result_markdown||'';
   document.getElementById('markdown-box').textContent=lastMarkdown;
 
