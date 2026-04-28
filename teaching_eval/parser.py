@@ -113,9 +113,9 @@ def coerce_result(structured: Dict[str, Any], markdown_text: str) -> Dict[str, A
         structured = build_fallback_summary(markdown_text)
 
     summary = structured.setdefault("summary", {})
-    summary["score_general"] = _safe_number(summary.get("score_general"))
-    summary["score_specific"] = _safe_number(summary.get("score_specific"))
-    summary["score_total"] = _safe_number(summary.get("score_total"))
+    summary["score_general"] = min(_safe_number(summary.get("score_general")), 45)
+    summary["score_specific"] = min(_safe_number(summary.get("score_specific")), 55)
+    summary["score_total"] = min(_safe_number(summary.get("score_total")), 100)
     summary["buffer_deduction"] = _safe_number(summary.get("buffer_deduction"))
     summary["adjusted_score"] = _safe_number(summary.get("adjusted_score"), summary["score_total"])
     if summary["adjusted_score"] <= 0 and summary["score_total"] > 0:

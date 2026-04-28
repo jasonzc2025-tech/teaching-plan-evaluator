@@ -1,0 +1,510 @@
+{% extends "base.html" %}
+{% block title %}住培临床教案质量智能评审系统{% endblock %}
+{% block body %}
+
+<div class="topbar">
+  <div class="container topbar-inner">
+    <div class="topbar-brand">
+      <div class="topbar-icon">📋</div>
+      <div>
+        <h1>住培临床教案质量智能评审系统</h1>
+        <div class="topbar-tags">
+          <span class="topbar-tag">V3.0</span>
+          <span class="topbar-tag">五类教案</span>
+          <span class="topbar-tag">百分制</span>
+          <span class="topbar-tag">条款级证据驱动</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+.page-grid { align-items: stretch; }
+.right-col { display: flex; flex-direction: column; }
+.right-card {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  position: sticky;
+  top: 20px;
+  max-height: calc(100vh - 100px);
+  overflow: hidden;
+}
+.score-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1.2fr;
+  gap: 8px;
+  padding: 16px 24px 8px;
+  flex-shrink: 0;
+}
+.sc {
+  background: var(--blue-light);
+  border-radius: 10px;
+  padding: 10px 8px;
+  text-align: center;
+}
+.sc.total { background: var(--blue-mid); }
+.sc-label { font-size: 10px; color: var(--muted); margin-bottom: 2px; }
+.sc.total .sc-label { color: rgba(255,255,255,0.75); }
+.sc-value {
+  font-size: 22px; font-weight: 700; color: var(--blue-mid); line-height: 1.1;
+  min-height: 28px; display: flex; align-items: center; justify-content: center;
+}
+.sc.total .sc-value { color: #fff; }
+.sc-max { font-size: 10px; color: var(--muted); margin-top: 1px; }
+.sc.total .sc-max { color: rgba(255,255,255,0.6); }
+.conclusion-row {
+  margin: 0 24px 8px;
+  flex-shrink: 0;
+  border-radius: 8px;
+  padding: 7px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--amber-light);
+  color: var(--amber);
+  border: 1px solid #fcd34d;
+}
+.conclusion-row.pass { background: var(--green-light); color: var(--green); border-color: #6ee7b7; }
+.conclusion-row.fail { background: var(--red-light); color: var(--red); border-color: #fca5a5; }
+.stream-bar {
+  display: none;
+  margin: 0 24px 8px;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  background: var(--blue-light);
+  border-radius: 8px;
+  font-size: 12px;
+  color: var(--blue-mid);
+  flex-shrink: 0;
+}
+.stream-bar.show { display: flex; }
+.right-body {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 0 24px 24px;
+  min-height: 0;
+}
+.empty-state {
+  border: 2px dashed var(--line);
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  min-height: 180px;
+  color: var(--muted);
+  text-align: center;
+  gap: 8px;
+}
+.issue-anim {
+  opacity: 0; transform: translateY(6px);
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+.issue-anim.visible { opacity: 1; transform: translateY(0); }
+.md-toggle-header {
+  display: flex; align-items: center; justify-content: space-between;
+  cursor: pointer; padding: 8px 0; margin-bottom: 0;
+}
+</style>
+
+<div class="container page-grid">
+
+  <!-- 左栏 -->
+  <div>
+    <div class="card">
+      <div class="card-header">
+        <div class="card-icon">📑</div>
+        <h2>教案类型</h2>
+      </div>
+      <div class="type-selector" id="type-selector">
+        <button class="type-btn active" data-value="">自动识别</button>
+        <button class="type-btn" data-value="教学查房">教学查房</button>
+        <button class="type-btn" data-value="病例讨论">病例讨论</button>
+        <button class="type-btn" data-value="临床小讲课">临床小讲课</button>
+        <button class="type-btn" data-value="技能培训">技能培训</button>
+        <button class="type-btn" data-value="教学门诊">教学门诊</button>
+      </div>
+      <input type="hidden" id="declared-type-input" value="">
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <div class="card-icon">📎</div>
+        <h2>上传教案</h2>
+      </div>
+      <div class="upload-zone" id="upload-zone">
+        <input type="file" id="file-input" accept=".docx,.pdf,.txt,.doc">
+        <div class="upload-icon">📂</div>
+        <div class="upload-hint">
+          <strong>点击或拖拽文件到此处</strong>
+          <small>支持 .docx · .pdf · .txt，最大 20MB</small>
+        </div>
+      </div>
+      <div class="file-selected" id="file-selected">
+        <span>✅</span>
+        <span class="file-selected-name" id="file-selected-name"></span>
+        <button class="btn sm" onclick="clearFile()" style="border-color:var(--line);font-size:11px;padding:4px 10px;">清除</button>
+      </div>
+      <div class="meta-parsed" id="meta-parsed">
+        <div class="meta-item"><div class="meta-item-label">科室</div><div class="meta-item-value" id="meta-dept">—</div></div>
+        <div class="meta-item"><div class="meta-item-label">带教老师</div><div class="meta-item-value" id="meta-teacher">—</div></div>
+        <div class="meta-item"><div class="meta-item-label">课程名称</div><div class="meta-item-value" id="meta-course">—</div></div>
+        <div class="meta-item"><div class="meta-item-label">评审轮次</div><div class="meta-item-value" id="meta-round">第 1 轮</div></div>
+      </div>
+      <div class="divider">或粘贴教案文字</div>
+      <textarea id="text-content" rows="6" placeholder="将教案文字内容粘贴到此处..."></textarea>
+      <div style="margin-top:16px;">
+        <button class="btn primary" id="submit-btn" onclick="submitEval()">
+          <span id="submit-icon">🔍</span>
+          <span id="submit-text">开始分析</span>
+        </button>
+      </div>
+      <div class="notice-bar">
+        📌 本系统仅记录评审类型、分数等统计数据，<strong>不保存教案原文内容</strong>。教案文本经加密传输处理后即时丢弃，不作留存。
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <div class="card-icon">ℹ️</div>
+        <h2>使用说明</h2>
+      </div>
+      <ul style="list-style:none;display:flex;flex-direction:column;gap:8px;font-size:13px;color:var(--muted);">
+        <li>📖 依据国家《住培教学活动指南》评审</li>
+        <li>📊 百分制条款评分，每分有证据依据</li>
+        <li>📄 建议提交 Word .docx 文件效果最佳</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- 右栏 -->
+  <div class="right-col">
+    <div class="card right-card">
+      <div class="card-header" style="flex-shrink:0;">
+        <div class="card-icon">📊</div>
+        <h2>评审结果</h2>
+        <span id="result-type-badge" style="margin-left:auto;font-size:12px;color:var(--muted);"></span>
+      </div>
+
+      <!-- 评分卡（始终显示） -->
+      <div class="score-row">
+        <div class="sc">
+          <div class="sc-label">通用维度</div>
+          <div class="sc-value" id="val-general"></div>
+          <div class="sc-max">/45</div>
+        </div>
+        <div class="sc">
+          <div class="sc-label">分项维度</div>
+          <div class="sc-value" id="val-specific"></div>
+          <div class="sc-max">/55</div>
+        </div>
+        <div class="sc total">
+          <div class="sc-label">总分</div>
+          <div class="sc-value" id="val-total"></div>
+          <div class="sc-max">/100</div>
+        </div>
+      </div>
+
+      <!-- 等第卡（始终显示） -->
+      <div class="conclusion-row" id="conclusion-banner">
+        <span>⏳</span><span>等待评审，上传教案后点击「开始分析」</span>
+      </div>
+
+      <!-- 分析中提示 -->
+      <div class="stream-bar" id="stream-bar">
+        <span class="stream-dot"></span>
+        <span id="stream-status">正在分析中，请稍候…</span>
+        <span style="margin-left:auto;font-size:11px;color:var(--muted);" id="stream-timer"></span>
+      </div>
+
+      <!-- 可滚动内容区 -->
+      <div class="right-body" id="right-body">
+        <div class="empty-state" id="placeholder">
+          <div style="font-size:32px;opacity:0.25;">🗒️</div>
+          <p style="font-size:13px;">问题列表与条款得分将在此显示</p>
+        </div>
+
+        <div id="result-panel" style="display:none;">
+          <div style="display:flex;gap:8px;margin:4px 0 8px;">
+            <button class="btn sm" id="copy-clause-btn" onclick="copyClauseTable()"
+              style="border-color:var(--blue-mid);color:var(--blue-mid);background:var(--blue-light);">
+              📋 复制条款表格
+            </button>
+          </div>
+
+          <div class="subcard" style="margin-top:0;">
+            <h3>⚠️ 问题列表</h3>
+            <div id="issue-list"></div>
+          </div>
+
+          <div class="subcard">
+            <h3>📋 条款得分明细</h3>
+            <div id="clause-table"></div>
+          </div>
+
+          <div class="subcard">
+            <div class="md-toggle-header" onclick="toggleMd()">
+              <h3 style="margin-bottom:0;">📝 完整报告原文</h3>
+              <span id="md-toggle-icon" style="font-size:11px;color:var(--muted);">▼ 展开</span>
+            </div>
+            <pre id="markdown-box" class="markdown-box" style="display:none;margin-top:8px;max-height:400px;overflow-y:auto;"></pre>
+          </div>
+        </div>
+
+        <div id="error-box" class="error-box" style="display:none;margin-top:12px;"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+document.querySelectorAll('.type-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.type-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('declared-type-input').value = btn.dataset.value;
+  });
+});
+
+const fileInput = document.getElementById('file-input');
+const uploadZone = document.getElementById('upload-zone');
+const fileSelected = document.getElementById('file-selected');
+const metaParsed = document.getElementById('meta-parsed');
+
+uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('drag-over'); });
+uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag-over'));
+uploadZone.addEventListener('drop', e => {
+  e.preventDefault(); uploadZone.classList.remove('drag-over');
+  if (e.dataTransfer.files[0]) { fileInput.files = e.dataTransfer.files; handleFileChange(); }
+});
+fileInput.addEventListener('change', handleFileChange);
+
+function handleFileChange() {
+  const file = fileInput.files[0];
+  if (!file) return;
+  document.getElementById('file-selected-name').textContent = file.name + '  (' + (file.size/1024).toFixed(0) + ' KB)';
+  fileSelected.classList.add('show');
+  uploadZone.style.display = 'none';
+  parseFilenameMetadata(file.name);
+  metaParsed.classList.add('show');
+}
+
+function clearFile() {
+  fileInput.value = '';
+  fileSelected.classList.remove('show');
+  uploadZone.style.display = '';
+  metaParsed.classList.remove('show');
+}
+
+function parseFilenameMetadata(filename) {
+  const name = filename.replace(/\.(docx?|pdf|txt)$/i, '');
+  const parts = name.split(/[-_]/);
+  let dept='—', teacher='—', course='—';
+  if (parts.length >= 4) { dept=parts[1]||'—'; teacher=parts[2]||'—'; course=parts.slice(3).join('-')||'—'; }
+  else if (parts.length===3) { dept=parts[0]; teacher=parts[1]; course=parts[2]; }
+  else if (parts.length===2) { dept=parts[0]; course=parts[1]; }
+  else { course=name; }
+  document.getElementById('meta-dept').textContent = dept.trim();
+  document.getElementById('meta-teacher').textContent = teacher.trim();
+  document.getElementById('meta-course').textContent = course.trim();
+  document.getElementById('meta-round').textContent = '第 1 轮（后台自动统计）';
+}
+
+function escapeHtml(t) {
+  return (t||'').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[m]);
+}
+function badgeClass(s) {
+  return {fatal:'badge-fatal',major:'badge-major',minor:'badge-minor',note:'badge-note'}[s]||'badge-default';
+}
+function toggleMd() {
+  const box = document.getElementById('markdown-box');
+  const icon = document.getElementById('md-toggle-icon');
+  if (box.style.display === 'none') { box.style.display = 'block'; icon.textContent = '▲ 收起'; }
+  else { box.style.display = 'none'; icon.textContent = '▼ 展开'; }
+}
+
+function updateScoreFromText(text) {
+  const gm = text.match(/通用维度[^\d]*(\d+)/);
+  const sm = text.match(/分项维度[^\d]*(\d+)/);
+  const tm = text.match(/总分[^\d]*(\d+)/);
+  const veto = /触发否决|已否决/.test(text);
+  const conM = text.match(/评分结论[：:]\s*([^\n]+)/);
+  if (gm) document.getElementById('val-general').textContent = gm[1];
+  if (sm) document.getElementById('val-specific').textContent = sm[1];
+  if (tm) document.getElementById('val-total').textContent = veto ? '否决' : tm[1];
+  const cb = document.getElementById('conclusion-banner');
+  if (veto) {
+    cb.className = 'conclusion-row fail';
+    cb.innerHTML = '<span>⛔</span><span>触发否决项</span>';
+  } else if (conM) {
+    const con = conM[1].trim();
+    const cls = con.includes('良好')||con.includes('优秀') ? 'pass' : con.includes('合格') ? '' : 'fail';
+    const icon = cls==='pass'?'✅':cls==='fail'?'❌':'⚠️';
+    cb.className = 'conclusion-row ' + cls;
+    cb.innerHTML = `<span>${icon}</span><span>${con}</span>`;
+  }
+}
+
+function updateScoreFromData(summary) {
+  document.getElementById('val-general').textContent = summary.score_general ?? '';
+  document.getElementById('val-specific').textContent = summary.score_specific ?? '';
+  document.getElementById('val-total').textContent = summary.score_total ?? '';
+  document.getElementById('result-type-badge').textContent = summary.actual_type || summary.declared_type || '';
+  const cb = document.getElementById('conclusion-banner');
+  const veto = summary.vetoed;
+  const con = summary.conclusion || '';
+  const cls = veto ? 'fail' : con.includes('良好')||con.includes('优秀') ? 'pass' : con.includes('合格') ? '' : 'fail';
+  const icon = veto ? '⛔' : cls==='pass' ? '✅' : cls==='fail' ? '❌' : '⚠️';
+  cb.className = 'conclusion-row ' + cls;
+  cb.innerHTML = `<span>${icon}</span><span>${veto ? '已否决 · ' : ''}${con || '评审完成'}</span>`;
+}
+
+let timerInterval = null;
+
+async function submitEval() {
+  const btn = document.getElementById('submit-btn');
+  btn.disabled = true;
+  document.getElementById('submit-icon').textContent = '⏳';
+  document.getElementById('submit-text').textContent = '分析中...';
+  document.getElementById('error-box').style.display = 'none';
+  document.getElementById('placeholder').style.display = 'flex';
+  document.getElementById('result-panel').style.display = 'none';
+  document.getElementById('stream-bar').classList.add('show');
+  document.getElementById('stream-status').textContent = '正在连接分析引擎…';
+  ['val-general','val-specific','val-total'].forEach(id => document.getElementById(id).textContent = '');
+  document.getElementById('conclusion-banner').className = 'conclusion-row';
+  document.getElementById('conclusion-banner').innerHTML = '<span>⏳</span><span>正在评审中…</span>';
+
+  const t0 = Date.now();
+  timerInterval = setInterval(() => {
+    document.getElementById('stream-timer').textContent = ((Date.now()-t0)/1000).toFixed(0) + ' 秒';
+  }, 1000);
+
+  try {
+    const formData = new FormData();
+    const file = fileInput.files[0];
+    if (file) formData.append('file', file);
+    const textContent = document.getElementById('text-content').value.trim();
+    if (textContent) formData.append('text_content', textContent);
+    formData.append('declared_type', document.getElementById('declared-type-input').value);
+    formData.append('department', document.getElementById('meta-dept').textContent.replace('—',''));
+    formData.append('teacher_name', document.getElementById('meta-teacher').textContent.replace('—',''));
+    formData.append('course_title', document.getElementById('meta-course').textContent.replace('—',''));
+    formData.append('review_round', '1');
+
+    const response = await fetch('/evaluate_stream', { method: 'POST', body: formData });
+    if (!response.ok) throw new Error('HTTP ' + response.status);
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder('utf-8');
+    let buffer = '', fullText = '', finalData = null;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop();
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const raw = line.slice(6).trim();
+        if (!raw) continue;
+        try {
+          const chunk = JSON.parse(raw);
+          if (chunk.error) throw new Error(chunk.error);
+          if (chunk.token !== undefined) {
+            fullText += chunk.token;
+            document.getElementById('stream-status').textContent = 'AI正在逐条分析…';
+            updateScoreFromText(fullText);
+          }
+          if (chunk.done) finalData = chunk;
+        } catch(e) {
+          if (e.message && !e.message.includes('JSON')) throw e;
+        }
+      }
+    }
+
+    if (finalData) renderFinalResult(finalData);
+    else throw new Error('未收到完整评审结果，请重试。');
+
+  } catch(err) {
+    document.getElementById('error-box').style.display = 'block';
+    document.getElementById('error-box').textContent = '❌ ' + err.message;
+  } finally {
+    clearInterval(timerInterval);
+    btn.disabled = false;
+    document.getElementById('submit-icon').textContent = '🔍';
+    document.getElementById('submit-text').textContent = '开始分析';
+    document.getElementById('stream-bar').classList.remove('show');
+  }
+}
+
+function renderFinalResult(data) {
+  const summary = data.summary || {};
+  updateScoreFromData(summary);
+  document.getElementById('markdown-box').textContent = data.result_markdown || '';
+
+  const clauses = data.clause_scores || [];
+  document.getElementById('clause-table').innerHTML = clauses.length
+    ? `<table class="table"><thead><tr><th>条款</th><th>满分</th><th>实得</th><th>证据</th><th>说明</th></tr></thead><tbody>${
+        clauses.map(c => `<tr>
+          <td>${escapeHtml(c.clause_name||c.clause_code||'—')}</td>
+          <td>${c.max_score??'—'}</td>
+          <td><strong style="color:var(--blue-mid)">${c.actual_score??'—'}</strong></td>
+          <td style="color:var(--muted);font-size:12px;">${escapeHtml(c.evidence_position||'—')}</td>
+          <td>${escapeHtml(c.judgment_text||'—')}</td>
+        </tr>`).join('')
+      }</tbody></table>`
+    : '<div style="color:var(--muted);">暂无条款数据。</div>';
+
+  document.getElementById('placeholder').style.display = 'none';
+  document.getElementById('result-panel').style.display = 'block';
+
+  const issues = data.issues || [];
+  const issueList = document.getElementById('issue-list');
+  issueList.innerHTML = '';
+  if (!issues.length) {
+    issueList.innerHTML = '<div style="color:var(--muted);padding:8px 0;">未提取到结构化问题。</div>';
+  } else {
+    issues.forEach((item, i) => {
+      setTimeout(() => {
+        const div = document.createElement('div');
+        div.className = 'issue-item issue-anim';
+        div.innerHTML = `
+          <div class="issue-head">
+            <span class="badge ${badgeClass(item.severity)}">${escapeHtml(item.severity||'minor')}</span>
+            <strong>${escapeHtml(item.issue_category||'未分类')}</strong>
+            <span style="color:var(--muted);font-size:12px;">${escapeHtml(item.clause_name||'')}</span>
+          </div>
+          <div style="margin-bottom:4px;">${escapeHtml(item.issue_text||'')}</div>
+          <div style="color:var(--muted);font-size:12px;">📍 ${escapeHtml(item.evidence_position||'—')}</div>
+          <div style="color:var(--muted);font-size:12px;margin-top:2px;">💡 ${escapeHtml(item.suggestion_text||'—')}</div>`;
+        issueList.appendChild(div);
+        requestAnimationFrame(() => setTimeout(() => div.classList.add('visible'), 10));
+        document.getElementById('right-body').scrollTop = issueList.scrollHeight;
+      }, i * 150);
+    });
+  }
+}
+
+function copyClauseTable() {
+  const rows = document.querySelectorAll('#clause-table table tr');
+  if (!rows.length) { alert('暂无条款数据可复制'); return; }
+  const lines = Array.from(rows).map(row =>
+    Array.from(row.querySelectorAll('th,td')).map(cell => cell.innerText.trim()).join('\t')
+  );
+  navigator.clipboard.writeText(lines.join('\n')).then(() => {
+    const btn = document.getElementById('copy-clause-btn');
+    btn.textContent = '✅ 已复制';
+    setTimeout(() => btn.textContent = '📋 复制条款表格', 1800);
+  }).catch(() => alert('复制失败，请手动复制。'));
+}
+</script>
+{% endblock %}

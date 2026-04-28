@@ -82,3 +82,10 @@ JSON 结构如下（字段名必须一致）：
 1. `conclusion` 必须是五档之一，不得输出“否决”。
 2. 若存在高风险，仅通过 `buffer_level` 与 `buffer_deduction` 表达影响。
 3. `adjusted_score = score_total - buffer_deduction`，最低不小于 0。
+
+## 评分约束（必须严格遵守）
+
+4. `score_general` = 通用维度所有条款 actual_score 之和，满分45，**不得超过45**。
+5. `score_specific` = 分项维度所有条款 actual_score 之和，满分55，**不得超过55**。
+6. `score_total` = `score_general` + `score_specific`，满分100，**不得超过100**。
+7. `clause_scores` 必须列出**所有**通用维度和分项维度条款，不得遗漏，每条 actual_score 不得超过该条款 max_score。
