@@ -16,7 +16,7 @@ def _require_env(name: str) -> str:
 
 class BaseConfig:
     APP_NAME = "住培临床教案质量智能评审系统"
-    VERSION = "V3.2.0"
+    VERSION = "V3.2.1"
     SECRET_KEY = _require_env("SECRET_KEY")
     ADMIN_PASSWORD = _require_env("ADMIN_PASSWORD")
     DB_PATH = os.environ.get("DB_PATH", str(INSTANCE_DIR / "eval_records.db"))

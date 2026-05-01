@@ -5,6 +5,7 @@ from flask import Blueprint, Response, current_app, jsonify, render_template, re
 from .activity_guides import get_activity_guide
 from .llm_client import LLMClient
 from .parser import coerce_result, count_issue_severity, extract_json_and_markdown
+from .precheck import run_precheck
 from .prompts import PROMPT_VERSION, build_system_prompt
 from .repository import save_evaluation
 from .scoring_controller import apply_scoring_rules
@@ -44,6 +45,20 @@ def get_round():
         return jsonify({"round": next_round})
     except Exception as e:
         return jsonify({"round": 1, "error": str(e)})
+
+
+@public_bp.route("/precheck", methods=["POST"])
+def precheck():
+    try:
+        text_content, metadata = get_text_content(
+            request,
+            current_app.config["ALLOWED_EXTENSIONS"],
+            current_app.config["MIN_TEXT_LENGTH"],
+            current_app.config["MAX_TEXT_LENGTH"],
+        )
+        return jsonify(run_precheck(text_content, metadata))
+    except Exception as exc:
+        return jsonify({"error": f"提交前自查失败: {exc}"}), 400
 
 
 @public_bp.route("/health")

@@ -9,7 +9,7 @@
       <div>
         <h1>住培临床教案质量智能评审系统</h1>
         <div class="topbar-tags">
-          <span class="topbar-tag">V3.2</span>
+          <span class="topbar-tag">V3.2.1</span>
           <span class="topbar-tag">五类教案</span>
           <span class="topbar-tag">百分制</span>
           <span class="topbar-tag">条款级证据驱动</span>
@@ -67,6 +67,18 @@
 .priority-item:first-of-type{border-top:0;padding-top:0;}
 .priority-item strong{display:block;color:var(--text);margin-bottom:3px;}
 .priority-item .suggestion{color:var(--muted);margin-top:3px;}
+.precheck-panel{display:none;border:1px solid #fcd34d;border-radius:10px;background:var(--amber-light);padding:12px 14px;margin-top:14px;}
+.precheck-panel.show{display:block;}
+.precheck-head{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:13px;font-weight:700;color:var(--amber);margin-bottom:8px;}
+.precheck-head span{font-size:11px;font-weight:500;color:var(--muted);}
+.precheck-list{display:grid;gap:7px;}
+.precheck-item{border:1px solid rgba(180,83,9,0.18);border-radius:8px;background:#fffdf4;padding:8px 10px;font-size:12px;}
+.precheck-item.found{background:#f0fdf4;border-color:#bbf7d0;color:#166534;}
+.precheck-item.missing{color:#78350f;}
+.precheck-title{display:flex;align-items:center;justify-content:space-between;gap:8px;font-weight:600;margin-bottom:3px;}
+.precheck-title span{font-size:11px;color:var(--muted);font-weight:500;}
+.precheck-note{color:var(--muted);font-size:12px;margin-top:8px;}
+.issue-copy-btn{margin-top:7px;border-color:var(--line);color:var(--muted);background:#fff;}
 </style>
 
 <div class="container page-grid">
@@ -122,6 +134,17 @@
         <button class="btn primary" id="submit-btn" onclick="submitEval()">
           <span id="submit-icon">🔍</span><span id="submit-text">开始分析</span>
         </button>
+      </div>
+      <div class="precheck-panel" id="precheck-panel">
+        <div class="precheck-head">
+          <strong>提交前自查</strong>
+          <span id="precheck-summary"></span>
+        </div>
+        <div class="precheck-list" id="precheck-list"></div>
+        <div class="precheck-note" id="precheck-note"></div>
+        <div style="margin-top:10px;">
+          <button class="btn sm" id="copy-precheck-btn" onclick="copyPrecheckList()" style="border-color:#f59e0b;color:#92400e;background:#fff7ed;">复制缺项提示</button>
+        </div>
       </div>
       <div class="notice-bar">
         📌 本系统仅记录评审类型、分数等统计数据，<strong>不保存教案原文内容</strong>。教案文本经加密传输处理后即时丢弃，不作留存。
@@ -231,6 +254,7 @@ document.querySelectorAll('.type-btn').forEach(function(btn){
     btn.classList.add('active');
     document.getElementById('declared-type-input').value=btn.dataset.value;
     loadActivityGuide(btn.dataset.value);
+    resetPrecheckGate();
   });
 });
 loadActivityGuide('');
@@ -246,16 +270,22 @@ uploadZone.addEventListener('drop',function(e){
 fileInput.addEventListener('change',handleFileChange);
 document.getElementById('meta-teacher').addEventListener('blur',updateReviewRound);
 document.getElementById('meta-course').addEventListener('blur',updateReviewRound);
+document.getElementById('text-content').addEventListener('input',resetPrecheckGate);
+['meta-dept','meta-teacher','meta-course','meta-round'].forEach(function(id){
+  document.getElementById(id).addEventListener('input',resetPrecheckGate);
+});
 
 function handleFileChange(){
   var file=fileInput.files[0];
   if(!file)return;
+  resetPrecheckGate();
   document.getElementById('file-selected-name').textContent=file.name+'  ('+(file.size/1024).toFixed(0)+' KB)';
   document.getElementById('file-selected').classList.add('show');
   uploadZone.style.display='none';
   parseFilenameMetadata(file.name);
 }
 function clearFile(){
+  resetPrecheckGate();
   fileInput.value='';
   document.getElementById('file-selected').classList.remove('show');
   uploadZone.style.display='';
@@ -321,10 +351,10 @@ function fallbackCopy(text){
 }
 
 function copyText(text,btnId,label){
-  var btn=document.getElementById(btnId);
-  var orig=btn.textContent;
-  var done=function(){btn.textContent='✅ 已复制';setTimeout(function(){btn.textContent=orig;},1800);};
-  var fail=function(){btn.textContent='❌ 失败';setTimeout(function(){btn.textContent=orig;},1800);};
+  var btn=typeof btnId==='string'?document.getElementById(btnId):btnId;
+  var orig=btn?btn.textContent:'';
+  var done=function(){if(btn){btn.textContent='✅ 已复制';setTimeout(function(){btn.textContent=orig;},1800);}};
+  var fail=function(){if(btn){btn.textContent='❌ 失败';setTimeout(function(){btn.textContent=orig;},1800);}};
   if(navigator.clipboard&&window.isSecureContext){
     navigator.clipboard.writeText(text).then(done).catch(function(){if(fallbackCopy(text))done();else fail();});
   }else{
@@ -357,11 +387,95 @@ function copyReport(){
   copyText(lastMarkdown,'copy-report-btn','📄 复制完整报告');
 }
 
+function buildSubmissionFormData(){
+  var formData=new FormData();
+  var file=fileInput.files[0];
+  if(file)formData.append('file',file);
+  var tc=document.getElementById('text-content').value.trim();
+  if(tc)formData.append('text_content',tc);
+  formData.append('declared_type',document.getElementById('declared-type-input').value);
+  formData.append('department',getInputValue('meta-dept'));
+  formData.append('teacher_name',getInputValue('meta-teacher'));
+  formData.append('course_title',getInputValue('meta-course'));
+  formData.append('review_round',getInputValue('meta-round')||'1');
+  return formData;
+}
+
+function resetPrecheckGate(){
+  precheckConfirmed=false;
+  lastPrecheckText='';
+  var panel=document.getElementById('precheck-panel');
+  if(panel)panel.classList.remove('show');
+  var submitText=document.getElementById('submit-text');
+  var submitIcon=document.getElementById('submit-icon');
+  if(submitText&&submitIcon){
+    submitIcon.textContent='🔍';
+    submitText.textContent='开始分析';
+  }
+}
+
+function renderPrecheck(data){
+  var panel=document.getElementById('precheck-panel');
+  var list=document.getElementById('precheck-list');
+  var summary=document.getElementById('precheck-summary');
+  var note=document.getElementById('precheck-note');
+  var missing=(data.checks||[]).filter(function(item){return item.status==='missing';});
+  var found=(data.checks||[]).filter(function(item){return item.status==='found';});
+  panel.classList.add('show');
+  summary.textContent='缺项 '+missing.length+' 项 / 已见 '+found.length+' 项';
+  if(!missing.length){
+    list.innerHTML='<div class="precheck-item found"><div class="precheck-title">✅ 未发现明显结构缺项</div><div>可以进入完整 AI 评审。</div></div>';
+    note.textContent=data.message||'';
+    lastPrecheckText='提交前自查：未发现明显结构缺项。';
+    return true;
+  }
+  list.innerHTML=missing.map(function(item){
+    var tag=item.severity==='important'?'重点':'建议';
+    return '<div class="precheck-item missing"><div class="precheck-title">⚠️ '+escapeHtml(item.title)+'<span>'+tag+'</span></div><div>'+escapeHtml(item.suggestion)+'</div></div>';
+  }).join('');
+  note.textContent='已暂停完整评审。可先补齐后再次点击开始分析；如确认教案已有相关内容，可再点一次继续完整评审。';
+  lastPrecheckText='提交前自查发现以下可能缺项：\n'+missing.map(function(item,idx){
+    return (idx+1)+'. '+item.title+'：'+item.suggestion;
+  }).join('\n');
+  return false;
+}
+
+async function runPrecheck(){
+  var response=await fetch('/precheck',{method:'POST',body:buildSubmissionFormData()});
+  var data=await response.json();
+  if(!response.ok)throw new Error(data.error||'提交前自查失败');
+  return data;
+}
+
+function copyPrecheckList(){
+  if(!lastPrecheckText){alert('暂无缺项提示');return;}
+  copyText(lastPrecheckText,'copy-precheck-btn','复制缺项提示');
+}
+
 function issueTitle(item){
   var parts=[];
   if(item.issue_category)parts.push(item.issue_category);
   if(item.clause_name)parts.push(item.clause_name);
   return parts.join(' / ')||'未分类问题';
+}
+
+function formatIssueSuggestion(item){
+  return [
+    issueTitle(item),
+    '问题：'+(item.issue_text||''),
+    '建议：'+(item.suggestion_text||'按评审意见补充对应内容'),
+    item.evidence_position?'证据位置：'+item.evidence_position:''
+  ].filter(Boolean).join('\n');
+}
+
+function createIssueElement(item, extraClass){
+  var div=document.createElement('div');
+  div.className='issue-item'+(extraClass?' '+extraClass:'');
+  div.innerHTML='<div class="issue-head"><span class="badge '+badgeClass(item.severity)+'">'+escapeHtml(item.severity||'minor')+'</span><strong>'+escapeHtml(item.issue_category||'未分类')+'</strong><span style="color:var(--muted);font-size:12px;"> '+escapeHtml(item.clause_name||'')+'</span></div><div style="margin-bottom:4px;">'+escapeHtml(item.issue_text||'')+'</div><div style="color:var(--muted);font-size:12px;">📍 '+escapeHtml(item.evidence_position||'—')+'</div><div style="color:var(--muted);font-size:12px;margin-top:2px;">💡 '+escapeHtml(item.suggestion_text||'—')+'</div><button type="button" class="btn sm issue-copy-btn">复制修改建议</button>';
+  div.querySelector('.issue-copy-btn').addEventListener('click',function(){
+    copyText(formatIssueSuggestion(item),this,'复制修改建议');
+  });
+  return div;
 }
 
 function priorityGroups(issues){
@@ -437,13 +551,39 @@ function updateScoreFromData(summary){
 var timerInterval=null;
 var lastMarkdown='';
 var lastPriorityText='';
+var lastPrecheckText='';
+var precheckConfirmed=false;
 
 async function submitEval(){
   var btn=document.getElementById('submit-btn');
   btn.disabled=true;
   document.getElementById('submit-icon').textContent='⏳';
-  document.getElementById('submit-text').textContent='分析中...';
+  document.getElementById('submit-text').textContent=precheckConfirmed?'分析中...':'自查中...';
   document.getElementById('error-box').style.display='none';
+
+  if(!precheckConfirmed){
+    try{
+      var precheckData=await runPrecheck();
+      var precheckPassed=renderPrecheck(precheckData);
+      if(!precheckPassed){
+        precheckConfirmed=true;
+        btn.disabled=false;
+        document.getElementById('submit-icon').textContent='➡️';
+        document.getElementById('submit-text').textContent='继续完整评审';
+        setConclusionBanner('pass','⚠️','提交前自查发现可能缺项，建议先补齐后再评审');
+        return;
+      }
+    }catch(precheckErr){
+      document.getElementById('error-box').style.display='block';
+      document.getElementById('error-box').textContent='❌ '+precheckErr.message;
+      btn.disabled=false;
+      document.getElementById('submit-icon').textContent='🔍';
+      document.getElementById('submit-text').textContent='开始分析';
+      return;
+    }
+  }
+
+  precheckConfirmed=false;
   document.getElementById('placeholder').style.display='flex';
   document.getElementById('result-panel').style.display='none';
   document.getElementById('stream-bar').classList.add('show');
@@ -460,18 +600,7 @@ async function submitEval(){
   },1000);
 
   try{
-    var formData=new FormData();
-    var file=fileInput.files[0];
-    if(file)formData.append('file',file);
-    var tc=document.getElementById('text-content').value.trim();
-    if(tc)formData.append('text_content',tc);
-    formData.append('declared_type',document.getElementById('declared-type-input').value);
-    formData.append('department',getInputValue('meta-dept'));
-    formData.append('teacher_name',getInputValue('meta-teacher'));
-    formData.append('course_title',getInputValue('meta-course'));
-    formData.append('review_round',getInputValue('meta-round')||'1');
-
-    var response=await fetch('/evaluate_stream',{method:'POST',body:formData});
+    var response=await fetch('/evaluate_stream',{method:'POST',body:buildSubmissionFormData()});
     if(!response.ok)throw new Error('HTTP '+response.status);
 
     var reader=response.body.getReader();
@@ -527,10 +656,7 @@ async function submitEval(){
                     var issueList=document.getElementById('issue-list');
                     issueList.innerHTML='';
                     issues.forEach(function(item,j){
-                      var div=document.createElement('div');
-                      div.className='issue-item';
-                      div.innerHTML='<div class="issue-head"><span class="badge '+badgeClass(item.severity)+'">'+escapeHtml(item.severity||'minor')+'</span><strong>'+escapeHtml(item.issue_category||'未分类')+'</strong><span style="color:var(--muted);font-size:12px;"> '+escapeHtml(item.clause_name||'')+'</span></div><div style="margin-bottom:4px;">'+escapeHtml(item.issue_text||'')+'</div><div style="color:var(--muted);font-size:12px;">📍 '+escapeHtml(item.evidence_position||'—')+'</div><div style="color:var(--muted);font-size:12px;margin-top:2px;">💡 '+escapeHtml(item.suggestion_text||'—')+'</div>';
-                      issueList.appendChild(div);
+                      issueList.appendChild(createIssueElement(item,''));
                     });
                   }
                 }catch(e){}
@@ -613,9 +739,7 @@ function renderFinalResult(data){
   }else{
     issues.forEach(function(item,i){
       setTimeout(function(){
-        var div=document.createElement('div');
-        div.className='issue-item issue-anim';
-        div.innerHTML='<div class="issue-head"><span class="badge '+badgeClass(item.severity)+'">'+escapeHtml(item.severity||'minor')+'</span><strong>'+escapeHtml(item.issue_category||'未分类')+'</strong><span style="color:var(--muted);font-size:12px;"> '+escapeHtml(item.clause_name||'')+'</span></div><div style="margin-bottom:4px;">'+escapeHtml(item.issue_text||'')+'</div><div style="color:var(--muted);font-size:12px;">📍 '+escapeHtml(item.evidence_position||'—')+'</div><div style="color:var(--muted);font-size:12px;margin-top:2px;">💡 '+escapeHtml(item.suggestion_text||'—')+'</div>';
+        var div=createIssueElement(item,'issue-anim');
         issueList.appendChild(div);
         requestAnimationFrame(function(){setTimeout(function(){div.classList.add('visible');},10);});
         document.getElementById('right-body').scrollTop=issueList.scrollHeight;
