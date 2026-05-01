@@ -9,7 +9,7 @@
       <div>
         <h1>住培临床教案质量智能评审系统</h1>
         <div class="topbar-tags">
-          <span class="topbar-tag">V3.1</span>
+          <span class="topbar-tag">V3.2</span>
           <span class="topbar-tag">五类教案</span>
           <span class="topbar-tag">百分制</span>
           <span class="topbar-tag">条款级证据驱动</span>
@@ -47,6 +47,26 @@
 .issue-anim.visible{opacity:1;transform:translateY(0);}
 .md-toggle-header{display:flex;align-items:center;justify-content:space-between;cursor:pointer;padding:8px 0;}
 .copy-bar{display:flex;gap:8px;padding:12px 0 4px;border-top:1px solid var(--line);margin-top:8px;}
+.guide-panel{border:1px solid var(--line);border-radius:10px;background:var(--card-2);padding:14px;margin-top:14px;}
+.guide-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;}
+.guide-head strong{font-size:13px;color:var(--blue-dark);}
+.guide-actions{display:flex;gap:8px;flex-wrap:wrap;}
+.guide-template{border:1px solid var(--line);border-radius:8px;background:#fff;padding:12px;max-height:220px;overflow:auto;white-space:pre-wrap;font-size:12px;line-height:1.65;color:var(--text);}
+.guide-checklist{display:grid;gap:6px;margin-top:10px;font-size:12px;color:var(--text);}
+.guide-check-item{display:flex;gap:7px;align-items:flex-start;}
+.meta-title{font-size:12px;font-weight:600;color:var(--blue-dark);margin:14px 0 8px;}
+.meta-parsed.editable{display:grid;}
+.meta-parsed.editable .meta-item{background:var(--card-2);border:1px solid var(--line);}
+.meta-input{width:100%;border:0;background:transparent;color:var(--blue-dark);font:inherit;font-weight:500;outline:none;min-width:0;}
+.meta-input::placeholder{color:#9aa8c2;}
+.priority-grid{display:grid;gap:10px;}
+.priority-group{border:1px solid var(--line);border-radius:10px;background:#fff;padding:10px 12px;}
+.priority-title{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;font-weight:700;color:var(--blue-dark);margin-bottom:8px;}
+.priority-title span{font-size:11px;color:var(--muted);font-weight:500;}
+.priority-item{border-top:1px solid var(--line);padding:8px 0;font-size:12px;}
+.priority-item:first-of-type{border-top:0;padding-top:0;}
+.priority-item strong{display:block;color:var(--text);margin-bottom:3px;}
+.priority-item .suggestion{color:var(--muted);margin-top:3px;}
 </style>
 
 <div class="container page-grid">
@@ -62,11 +82,22 @@
         <button class="type-btn" data-value="教学门诊">教学门诊</button>
       </div>
       <input type="hidden" id="declared-type-input" value="">
+      <div class="guide-panel" id="guide-panel">
+        <div class="guide-head">
+          <strong id="guide-title">选择教学活动类型查看模板</strong>
+          <div class="guide-actions">
+            <button class="btn sm" id="copy-template-btn" onclick="copyGuideTemplate()" style="border-color:var(--blue-mid);color:var(--blue-mid);background:var(--blue-light);">复制模板</button>
+            <button class="btn sm" id="copy-checklist-btn" onclick="copyGuideChecklist()" style="border-color:var(--line);color:var(--muted);">复制清单</button>
+          </div>
+        </div>
+        <pre class="guide-template" id="guide-template"></pre>
+        <div class="guide-checklist" id="guide-checklist"></div>
+      </div>
     </div>
     <div class="card">
       <div class="card-header"><div class="card-icon">📎</div><h2>上传教案</h2></div>
       <div class="upload-zone" id="upload-zone">
-        <input type="file" id="file-input" accept=".docx,.pdf,.txt,.doc">
+        <input type="file" id="file-input" accept=".docx,.pdf,.txt">
         <div class="upload-icon">📂</div>
         <div class="upload-hint">
           <strong>点击或拖拽文件到此处</strong>
@@ -78,11 +109,12 @@
         <span class="file-selected-name" id="file-selected-name"></span>
         <button class="btn sm" onclick="clearFile()" style="border-color:var(--line);font-size:11px;padding:4px 10px;">清除</button>
       </div>
-      <div class="meta-parsed" id="meta-parsed">
-        <div class="meta-item"><div class="meta-item-label">科室</div><div class="meta-item-value" id="meta-dept">—</div></div>
-        <div class="meta-item"><div class="meta-item-label">带教老师</div><div class="meta-item-value" id="meta-teacher">—</div></div>
-        <div class="meta-item"><div class="meta-item-label">课程名称</div><div class="meta-item-value" id="meta-course">—</div></div>
-        <div class="meta-item"><div class="meta-item-label">评审轮次</div><div class="meta-item-value" id="meta-round">第 1 轮</div></div>
+      <div class="meta-title">教案信息</div>
+      <div class="meta-parsed editable" id="meta-parsed">
+        <label class="meta-item"><div class="meta-item-label">科室</div><input class="meta-input" id="meta-dept" placeholder="可留空"></label>
+        <label class="meta-item"><div class="meta-item-label">带教老师</div><input class="meta-input" id="meta-teacher" placeholder="可留空"></label>
+        <label class="meta-item"><div class="meta-item-label">课程名称</div><input class="meta-input" id="meta-course" placeholder="可留空"></label>
+        <label class="meta-item"><div class="meta-item-label">评审轮次</div><input class="meta-input" id="meta-round" type="number" min="1" value="1"></label>
       </div>
       <div class="divider">或粘贴教案文字</div>
       <textarea id="text-content" rows="6" placeholder="将教案文字内容粘贴到此处..."></textarea>
@@ -131,6 +163,10 @@
         </div>
         <div id="result-panel" style="display:none;">
           <div class="subcard" style="margin-top:4px;">
+            <h3>优先修改清单</h3>
+            <div id="priority-list"></div>
+          </div>
+          <div class="subcard" style="margin-top:4px;">
             <h3>⚠️ 问题列表</h3>
             <div id="issue-list"></div>
           </div>
@@ -146,6 +182,7 @@
             <pre id="markdown-box" class="markdown-box" style="display:none;margin-top:8px;max-height:400px;overflow-y:auto;"></pre>
           </div>
           <div class="copy-bar">
+            <button class="btn sm" id="copy-priority-btn" onclick="copyPriorityList()" style="border-color:var(--green);color:var(--green);background:var(--green-light);">复制优先清单</button>
             <button class="btn sm" id="copy-clause-btn" onclick="copyClauseTable()" style="border-color:var(--blue-mid);color:var(--blue-mid);background:var(--blue-light);">📋 复制条款表格</button>
             <button class="btn sm" id="copy-report-btn" onclick="copyReport()" style="border-color:var(--line);color:var(--muted);">📄 复制完整报告</button>
           </div>
@@ -157,13 +194,46 @@
 </div>
 
 <script>
+var currentGuide={template:'',checklist:[]};
+
+function getInputValue(id){
+  var el=document.getElementById(id);
+  return el ? (el.value||'').trim() : '';
+}
+
+function setInputValue(id,value){
+  var el=document.getElementById(id);
+  if(el)el.value=(value&&value!=='—')?value:'';
+}
+
+function renderGuide(data){
+  currentGuide=data||{template:'',checklist:[]};
+  document.getElementById('guide-title').textContent=currentGuide.title||'写作模板';
+  document.getElementById('guide-template').textContent=currentGuide.template||'';
+  var checklist=currentGuide.checklist||[];
+  document.getElementById('guide-checklist').innerHTML=checklist.map(function(item){
+    return '<div class="guide-check-item"><span>□</span><span>'+escapeHtml(item)+'</span></div>';
+  }).join('');
+}
+
+function loadActivityGuide(activityType){
+  fetch('/activity_guide?type='+encodeURIComponent(activityType||''))
+    .then(function(r){return r.json();})
+    .then(renderGuide)
+    .catch(function(){
+      renderGuide({title:'写作模板',template:'模板暂时无法读取。',checklist:[]});
+    });
+}
+
 document.querySelectorAll('.type-btn').forEach(function(btn){
   btn.addEventListener('click',function(){
     document.querySelectorAll('.type-btn').forEach(function(b){b.classList.remove('active');});
     btn.classList.add('active');
     document.getElementById('declared-type-input').value=btn.dataset.value;
+    loadActivityGuide(btn.dataset.value);
   });
 });
+loadActivityGuide('');
 
 var fileInput=document.getElementById('file-input');
 var uploadZone=document.getElementById('upload-zone');
@@ -174,6 +244,8 @@ uploadZone.addEventListener('drop',function(e){
   if(e.dataTransfer.files[0]){fileInput.files=e.dataTransfer.files;handleFileChange();}
 });
 fileInput.addEventListener('change',handleFileChange);
+document.getElementById('meta-teacher').addEventListener('blur',updateReviewRound);
+document.getElementById('meta-course').addEventListener('blur',updateReviewRound);
 
 function handleFileChange(){
   var file=fileInput.files[0];
@@ -182,13 +254,15 @@ function handleFileChange(){
   document.getElementById('file-selected').classList.add('show');
   uploadZone.style.display='none';
   parseFilenameMetadata(file.name);
-  document.getElementById('meta-parsed').classList.add('show');
 }
 function clearFile(){
   fileInput.value='';
   document.getElementById('file-selected').classList.remove('show');
   uploadZone.style.display='';
-  document.getElementById('meta-parsed').classList.remove('show');
+  setInputValue('meta-dept','');
+  setInputValue('meta-teacher','');
+  setInputValue('meta-course','');
+  setInputValue('meta-round','1');
 }
 function parseFilenameMetadata(filename){
   var name=filename.replace(/\.(docx?|pdf|txt)$/i,'');
@@ -198,22 +272,23 @@ function parseFilenameMetadata(filename){
   else if(parts.length===3){dept=parts[0];teacher=parts[1];course=parts[2];}
   else if(parts.length===2){dept=parts[0];course=parts[1];}
   else{course=name;}
-  document.getElementById('meta-dept').textContent=dept.trim();
-  document.getElementById('meta-teacher').textContent=teacher.trim();
-  document.getElementById('meta-course').textContent=course.trim();
-  document.getElementById('meta-round').textContent='查询中…';
-  // 查询实际轮次
-  var t=dept.trim(),c=course.trim();
-  if(teacher.trim()&&c){
-    fetch('/get_round?teacher_name='+encodeURIComponent(teacher.trim())+'&course_title='+encodeURIComponent(c))
+  setInputValue('meta-dept',dept.trim());
+  setInputValue('meta-teacher',teacher.trim());
+  setInputValue('meta-course',course.trim());
+  updateReviewRound();
+}
+
+function updateReviewRound(){
+  var teacher=getInputValue('meta-teacher');
+  var course=getInputValue('meta-course');
+  setInputValue('meta-round','1');
+  if(teacher&&course){
+    fetch('/get_round?teacher_name='+encodeURIComponent(teacher)+'&course_title='+encodeURIComponent(course))
       .then(function(r){return r.json();})
       .then(function(d){
-        document.getElementById('meta-round').textContent='第 '+d.round+' 轮';
-        document.getElementById('meta-round').dataset.round=d.round;
+        setInputValue('meta-round',String(d.round||1));
       })
-      .catch(function(){document.getElementById('meta-round').textContent='第 1 轮';});
-  } else {
-    document.getElementById('meta-round').textContent='第 1 轮';
+      .catch(function(){setInputValue('meta-round','1');});
   }
 }
 
@@ -257,6 +332,17 @@ function copyText(text,btnId,label){
   }
 }
 
+function copyGuideTemplate(){
+  if(!currentGuide.template){alert('暂无模板内容');return;}
+  copyText(currentGuide.template,'copy-template-btn','复制模板');
+}
+
+function copyGuideChecklist(){
+  var checklist=currentGuide.checklist||[];
+  if(!checklist.length){alert('暂无清单内容');return;}
+  copyText(checklist.map(function(item){return '□ '+item;}).join('\n'),'copy-checklist-btn','复制清单');
+}
+
 function copyClauseTable(){
   var rows=document.querySelectorAll('#clause-table table tr');
   if(!rows.length){alert('暂无条款数据');return;}
@@ -269,6 +355,63 @@ function copyClauseTable(){
 function copyReport(){
   if(!lastMarkdown){alert('暂无报告内容');return;}
   copyText(lastMarkdown,'copy-report-btn','📄 复制完整报告');
+}
+
+function issueTitle(item){
+  var parts=[];
+  if(item.issue_category)parts.push(item.issue_category);
+  if(item.clause_name)parts.push(item.clause_name);
+  return parts.join(' / ')||'未分类问题';
+}
+
+function priorityGroups(issues){
+  var groups=[
+    {key:'must',title:'必须先改',hint:'影响合格或主要得分',items:[]},
+    {key:'improve',title:'建议优化',hint:'影响质量提升',items:[]},
+    {key:'polish',title:'可以完善',hint:'锦上添花',items:[]}
+  ];
+  (issues||[]).forEach(function(item){
+    if(item.is_veto_related||item.severity==='fatal'||item.severity==='major')groups[0].items.push(item);
+    else if(item.severity==='minor')groups[1].items.push(item);
+    else groups[2].items.push(item);
+  });
+  return groups;
+}
+
+function renderPriorityList(issues){
+  var box=document.getElementById('priority-list');
+  var groups=priorityGroups(issues);
+  var shownGroups=groups.filter(function(g){return g.items.length;});
+  if(!shownGroups.length){
+    box.innerHTML='<div style="color:var(--muted);font-size:13px;">暂无需要优先处理的问题。</div>';
+    lastPriorityText='暂无需要优先处理的问题。';
+    return;
+  }
+  lastPriorityText='';
+  box.innerHTML='<div class="priority-grid">'+shownGroups.map(function(group){
+    var items=group.items.slice(0,4);
+    lastPriorityText+=group.title+'\n';
+    var html='<div class="priority-group"><div class="priority-title">'+group.title+'<span>'+group.hint+' · '+group.items.length+'项</span></div>';
+    html+=items.map(function(item,idx){
+      var title=issueTitle(item);
+      var issue=item.issue_text||'';
+      var suggestion=item.suggestion_text||'';
+      lastPriorityText+=(idx+1)+'. '+title+'\n问题：'+issue+'\n建议：'+suggestion+'\n';
+      return '<div class="priority-item"><strong>'+escapeHtml(title)+'</strong><div>'+escapeHtml(issue)+'</div><div class="suggestion">建议：'+escapeHtml(suggestion||'按评审意见补充对应内容')+'</div></div>';
+    }).join('');
+    if(group.items.length>items.length){
+      html+='<div class="priority-item" style="color:var(--muted);">其余 '+(group.items.length-items.length)+' 项可在问题列表中查看。</div>';
+      lastPriorityText+='其余 '+(group.items.length-items.length)+' 项可在问题列表中查看。\n';
+    }
+    lastPriorityText+='\n';
+    html+='</div>';
+    return html;
+  }).join('')+'</div>';
+}
+
+function copyPriorityList(){
+  if(!lastPriorityText){alert('暂无优先清单');return;}
+  copyText(lastPriorityText.trim(),'copy-priority-btn','复制优先清单');
 }
 
 function updateScoreFromData(summary){
@@ -293,6 +436,7 @@ function updateScoreFromData(summary){
 
 var timerInterval=null;
 var lastMarkdown='';
+var lastPriorityText='';
 
 async function submitEval(){
   var btn=document.getElementById('submit-btn');
@@ -307,6 +451,8 @@ async function submitEval(){
   ['val-general','val-specific','val-total'].forEach(function(id){document.getElementById(id).textContent='';});
   setConclusionBanner('','⏳','正在评审中，请稍候…');
   lastMarkdown='';
+  lastPriorityText='';
+  document.getElementById('priority-list').innerHTML='';
 
   var t0=Date.now();
   timerInterval=setInterval(function(){
@@ -320,12 +466,10 @@ async function submitEval(){
     var tc=document.getElementById('text-content').value.trim();
     if(tc)formData.append('text_content',tc);
     formData.append('declared_type',document.getElementById('declared-type-input').value);
-    formData.append('department',document.getElementById('meta-dept').textContent.replace('—',''));
-    formData.append('teacher_name',document.getElementById('meta-teacher').textContent.replace('—',''));
-    formData.append('course_title',document.getElementById('meta-course').textContent.replace('—',''));
-    var roundEl=document.getElementById('meta-round');
-    var roundVal=roundEl.dataset.round||'1';
-    formData.append('review_round',roundVal);
+    formData.append('department',getInputValue('meta-dept'));
+    formData.append('teacher_name',getInputValue('meta-teacher'));
+    formData.append('course_title',getInputValue('meta-course'));
+    formData.append('review_round',getInputValue('meta-round')||'1');
 
     var response=await fetch('/evaluate_stream',{method:'POST',body:formData});
     if(!response.ok)throw new Error('HTTP '+response.status);
@@ -379,6 +523,7 @@ async function submitEval(){
                     }
                     // 问题列表也提前渲染
                     var issues=parsed.issues||[];
+                    renderPriorityList(issues);
                     var issueList=document.getElementById('issue-list');
                     issueList.innerHTML='';
                     issues.forEach(function(item,j){
@@ -460,6 +605,7 @@ function renderFinalResult(data){
   document.getElementById('result-panel').style.display='block';
 
   var issues=data.issues||[];
+  renderPriorityList(issues);
   var issueList=document.getElementById('issue-list');
   issueList.innerHTML='';
   if(!issues.length){

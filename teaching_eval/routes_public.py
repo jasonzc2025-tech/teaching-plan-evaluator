@@ -2,6 +2,7 @@ import json
 
 from flask import Blueprint, Response, current_app, jsonify, render_template, request
 
+from .activity_guides import get_activity_guide
 from .llm_client import LLMClient
 from .parser import coerce_result, count_issue_severity, extract_json_and_markdown
 from .prompts import PROMPT_VERSION, build_system_prompt
@@ -16,6 +17,12 @@ public_bp = Blueprint("public", __name__)
 @public_bp.route("/")
 def index():
     return render_template("index.html")
+
+
+@public_bp.route("/activity_guide", methods=["GET"])
+def activity_guide():
+    activity_type = request.args.get("type", "").strip()
+    return jsonify(get_activity_guide(activity_type))
 
 
 @public_bp.route("/get_round", methods=["GET"])
