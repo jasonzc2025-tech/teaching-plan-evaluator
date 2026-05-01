@@ -141,6 +141,158 @@
     </div>
   </div>
 
+  <!-- 管理改进方向 -->
+  <div class="dashboard-grid">
+    <div class="card">
+      <h2>📉 长期低分条款 Top 10</h2>
+      {% if low_clause_scores %}
+      <table class="table">
+        <thead><tr><th>条款</th><th>样本</th><th>均分率</th><th>平均失分</th></tr></thead>
+        <tbody>
+          {% for row in low_clause_scores %}
+          <tr>
+            <td>{{ row.clause_name }}</td>
+            <td>{{ row.samples }}</td>
+            <td><strong style="color:var(--amber);">{{ row.score_rate or 0 }}%</strong></td>
+            <td>{{ row.avg_loss or 0 }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div style="color:var(--muted);font-size:13px;">暂无条款得分数据。</div>
+      {% endif %}
+    </div>
+
+    <div class="card">
+      <h2>🚫 否决/严重问题来源</h2>
+      {% if veto_reasons %}
+      <table class="table">
+        <thead><tr><th>问题来源</th><th>关联条款</th><th>频次</th></tr></thead>
+        <tbody>
+          {% for row in veto_reasons %}
+          <tr>
+            <td>
+              {{ row.issue_category }}
+              {% if row.issue_subcategory %}<div style="font-size:11px;color:var(--muted);">{{ row.issue_subcategory }}</div>{% endif %}
+            </td>
+            <td>{{ row.clause_name }}</td>
+            <td><strong style="color:var(--red);">{{ row.cnt }}</strong></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div style="color:var(--muted);font-size:13px;">暂无否决项或 fatal 问题。</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="dashboard-grid">
+    <div class="card">
+      <h2>📚 各教学类型薄弱点</h2>
+      {% if type_weaknesses %}
+      <table class="table">
+        <thead><tr><th>教学类型</th><th>问题总数</th><th>主要薄弱点</th></tr></thead>
+        <tbody>
+          {% for row in type_weaknesses %}
+          <tr>
+            <td>{{ row.doc_type }}</td>
+            <td>{{ row.total_issues }}<div style="font-size:11px;color:var(--muted);">严重 {{ row.severe_issues }}</div></td>
+            <td>
+              {% for item in row.top_categories %}
+              <div>{{ item.name }} <span style="color:var(--muted);font-size:11px;">{{ item.cnt }}次{% if item.severe_cnt %} / 严重{{ item.severe_cnt }}{% endif %}</span></div>
+              {% endfor %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div style="color:var(--muted);font-size:13px;">暂无按教学类型聚合的问题数据。</div>
+      {% endif %}
+    </div>
+
+    <div class="card">
+      <h2>🏥 科室共性薄弱点</h2>
+      {% if department_weaknesses %}
+      <table class="table">
+        <thead><tr><th>科室</th><th>问题总数</th><th>高频问题</th></tr></thead>
+        <tbody>
+          {% for row in department_weaknesses %}
+          <tr>
+            <td>{{ row.department }}</td>
+            <td>{{ row.total_issues }}<div style="font-size:11px;color:var(--muted);">严重 {{ row.severe_issues }}</div></td>
+            <td>
+              {% for item in row.top_categories %}
+              <div>{{ item.name }} <span style="color:var(--muted);font-size:11px;">{{ item.cnt }}次{% if item.severe_cnt %} / 严重{{ item.severe_cnt }}{% endif %}</span></div>
+              {% endfor %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div style="color:var(--muted);font-size:13px;">暂无按科室聚合的问题数据。</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>📈 多轮提交改进效果</h2>
+    {% if improvement_summary %}
+    <div style="overflow-x:auto;">
+      <table class="table">
+        <thead>
+          <tr><th>课程</th><th>老师</th><th>科室</th><th>轮次</th><th>首次分</th><th>最新分</th><th>分数变化</th><th>major变化</th><th>fatal变化</th><th>最近时间</th></tr>
+        </thead>
+        <tbody>
+          {% for row in improvement_summary %}
+          <tr>
+            <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{ row.course }}">{{ row.course }}</td>
+            <td>{{ row.teacher_name or '—' }}</td>
+            <td>{{ row.department or '—' }}</td>
+            <td>第{{ row.total_rounds }}轮</td>
+            <td>{{ "%.0f"|format(row.first_score or 0) }}</td>
+            <td>{{ "%.0f"|format(row.latest_score or 0) }}</td>
+            <td>
+              {% if row.score_delta > 0 %}
+              <strong style="color:var(--green);">+{{ "%.1f"|format(row.score_delta) }}</strong>
+              {% elif row.score_delta < 0 %}
+              <strong style="color:var(--red);">{{ "%.1f"|format(row.score_delta) }}</strong>
+              {% else %}
+              <span style="color:var(--muted);">0</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if row.major_delta < 0 %}
+              <span style="color:var(--green);">{{ row.major_delta }}</span>
+              {% elif row.major_delta > 0 %}
+              <span style="color:var(--red);">+{{ row.major_delta }}</span>
+              {% else %}
+              <span style="color:var(--muted);">0</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if row.fatal_delta < 0 %}
+              <span style="color:var(--green);">{{ row.fatal_delta }}</span>
+              {% elif row.fatal_delta > 0 %}
+              <span style="color:var(--red);">+{{ row.fatal_delta }}</span>
+              {% else %}
+              <span style="color:var(--muted);">0</span>
+              {% endif %}
+            </td>
+            <td style="font-size:11px;color:var(--muted);">{{ row.last_reviewed[:10] }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div style="color:var(--muted);font-size:13px;">同一老师同一课程提交2次以上后，此处将显示分数与 major/fatal 问题变化。</div>
+    {% endif %}
+  </div>
+
   <!-- 最近记录 -->
   <div class="card">
     <h2>📋 最近 50 条记录</h2>

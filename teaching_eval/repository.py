@@ -1,4 +1,5 @@
 import json
+from collections import defaultdict
 from datetime import datetime
 from typing import Dict, List
 
@@ -175,6 +176,113 @@ def fetch_dashboard_data(db_path: str) -> Dict:
         """
     ).fetchall()]
 
+    veto_reasons = [dict(row) for row in conn.execute(
+        """
+        SELECT
+            COALESCE(NULLIF(issue_category, ''), '未分类') AS issue_category,
+            COALESCE(NULLIF(issue_subcategory, ''), '') AS issue_subcategory,
+            COALESCE(NULLIF(clause_name, ''), NULLIF(clause_code, ''), '未关联条款') AS clause_name,
+            COUNT(*) AS cnt
+        FROM record_issues
+        WHERE is_veto_related=1 OR severity='fatal'
+        GROUP BY
+            COALESCE(NULLIF(issue_category, ''), '未分类'),
+            COALESCE(NULLIF(issue_subcategory, ''), ''),
+            COALESCE(NULLIF(clause_name, ''), NULLIF(clause_code, ''), '未关联条款')
+        ORDER BY cnt DESC
+        LIMIT 10
+        """
+    ).fetchall()]
+
+    low_clause_scores = [dict(row) for row in conn.execute(
+        """
+        SELECT
+            COALESCE(NULLIF(clause_name, ''), NULLIF(clause_code, ''), '未知条款') AS clause_name,
+            COUNT(*) AS samples,
+            ROUND(AVG(max_score), 1) AS avg_max,
+            ROUND(AVG(actual_score), 1) AS avg_actual,
+            ROUND(AVG(max_score - actual_score), 1) AS avg_loss,
+            ROUND(100.0 * AVG(actual_score) / NULLIF(AVG(max_score), 0), 1) AS score_rate
+        FROM clause_scores
+        WHERE max_score IS NOT NULL AND max_score > 0
+        GROUP BY COALESCE(NULLIF(clause_name, ''), NULLIF(clause_code, ''), '未知条款')
+        ORDER BY score_rate ASC, avg_loss DESC, samples DESC
+        LIMIT 10
+        """
+    ).fetchall()]
+
+    type_issue_rows = [dict(row) for row in conn.execute(
+        """
+        SELECT
+            COALESCE(NULLIF(r.actual_type, ''), NULLIF(r.declared_type, ''), '未知') AS doc_type,
+            COALESCE(NULLIF(i.issue_category, ''), '未分类') AS issue_category,
+            COUNT(*) AS cnt,
+            SUM(CASE WHEN i.severity IN ('fatal', 'major') THEN 1 ELSE 0 END) AS severe_cnt
+        FROM record_issues i
+        JOIN records r ON r.id = i.record_id
+        GROUP BY
+            COALESCE(NULLIF(r.actual_type, ''), NULLIF(r.declared_type, ''), '未知'),
+            COALESCE(NULLIF(i.issue_category, ''), '未分类')
+        ORDER BY doc_type ASC, cnt DESC
+        """
+    ).fetchall()]
+
+    type_map = {}
+    for row in type_issue_rows:
+        item = type_map.setdefault(row["doc_type"], {
+            "doc_type": row["doc_type"],
+            "total_issues": 0,
+            "severe_issues": 0,
+            "top_categories": [],
+        })
+        item["total_issues"] += row["cnt"] or 0
+        item["severe_issues"] += row["severe_cnt"] or 0
+        if len(item["top_categories"]) < 3:
+            item["top_categories"].append({
+                "name": row["issue_category"],
+                "cnt": row["cnt"],
+                "severe_cnt": row["severe_cnt"] or 0,
+            })
+    type_weaknesses = sorted(type_map.values(), key=lambda x: x["total_issues"], reverse=True)
+
+    dept_issue_rows = [dict(row) for row in conn.execute(
+        """
+        SELECT
+            COALESCE(NULLIF(r.department, ''), '未标注科室') AS department,
+            COALESCE(NULLIF(i.issue_category, ''), '未分类') AS issue_category,
+            COUNT(*) AS cnt,
+            SUM(CASE WHEN i.severity IN ('fatal', 'major') THEN 1 ELSE 0 END) AS severe_cnt
+        FROM record_issues i
+        JOIN records r ON r.id = i.record_id
+        GROUP BY
+            COALESCE(NULLIF(r.department, ''), '未标注科室'),
+            COALESCE(NULLIF(i.issue_category, ''), '未分类')
+        ORDER BY department ASC, cnt DESC
+        """
+    ).fetchall()]
+
+    dept_map = {}
+    for row in dept_issue_rows:
+        item = dept_map.setdefault(row["department"], {
+            "department": row["department"],
+            "total_issues": 0,
+            "severe_issues": 0,
+            "top_categories": [],
+        })
+        item["total_issues"] += row["cnt"] or 0
+        item["severe_issues"] += row["severe_cnt"] or 0
+        if len(item["top_categories"]) < 3:
+            item["top_categories"].append({
+                "name": row["issue_category"],
+                "cnt": row["cnt"],
+                "severe_cnt": row["severe_cnt"] or 0,
+            })
+    department_weaknesses = sorted(
+        dept_map.values(),
+        key=lambda x: (x["severe_issues"], x["total_issues"]),
+        reverse=True,
+    )[:12]
+
     daily = [dict(row) for row in conn.execute(
         """
         SELECT substr(created_at, 1, 10) AS day,
@@ -243,6 +351,51 @@ def fetch_dashboard_data(db_path: str) -> Dict:
         """
     ).fetchall()]
 
+    round_records = [dict(row) for row in conn.execute(
+        """
+        SELECT id, created_at, filename, department, teacher_name, course_title,
+               score_total, major_count, fatal_count, review_round
+        FROM records
+        WHERE COALESCE(course_title, filename, '') <> ''
+        ORDER BY COALESCE(teacher_name, ''), COALESCE(course_title, filename, ''), id ASC
+        """
+    ).fetchall()]
+
+    grouped_rounds = defaultdict(list)
+    for row in round_records:
+        key = (
+            row.get("teacher_name") or "未标注老师",
+            row.get("course_title") or row.get("filename") or "未知课程",
+        )
+        grouped_rounds[key].append(row)
+
+    improvement_rows = []
+    for (teacher, course), rows in grouped_rounds.items():
+        if len(rows) < 2:
+            continue
+        first = rows[0]
+        latest = rows[-1]
+        first_score = first.get("score_total") or 0
+        latest_score = latest.get("score_total") or 0
+        first_major = first.get("major_count") or 0
+        latest_major = latest.get("major_count") or 0
+        first_fatal = first.get("fatal_count") or 0
+        latest_fatal = latest.get("fatal_count") or 0
+        improvement_rows.append({
+            "teacher_name": teacher,
+            "course": course,
+            "department": latest.get("department") or first.get("department") or "",
+            "total_rounds": len(rows),
+            "first_score": first_score,
+            "latest_score": latest_score,
+            "score_delta": round(latest_score - first_score, 1),
+            "major_delta": latest_major - first_major,
+            "fatal_delta": latest_fatal - first_fatal,
+            "last_reviewed": latest.get("created_at") or "",
+        })
+    improvement_rows.sort(key=lambda x: x["last_reviewed"], reverse=True)
+    improvement_summary = improvement_rows[:20]
+
     conn.close()
     return {
         "total": total,
@@ -255,10 +408,15 @@ def fetch_dashboard_data(db_path: str) -> Dict:
         "severity_counts": severity_counts,
         "top_issue_categories": top_issue_categories,
         "top_issue_subcategories": top_issue_subcategories,
+        "veto_reasons": veto_reasons,
+        "low_clause_scores": low_clause_scores,
+        "type_weaknesses": type_weaknesses,
+        "department_weaknesses": department_weaknesses,
         "daily": daily,
         "by_teacher": by_teacher,
         "by_dept": by_dept,
         "round_stats": round_stats,
+        "improvement_summary": improvement_summary,
         "recent_records": recent_records,
     }
 
