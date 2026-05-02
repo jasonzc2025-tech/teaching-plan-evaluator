@@ -151,7 +151,7 @@ def evaluate_stream():
             severity_counts = count_issue_severity(structured["issues"])
             summary = structured["summary"]
 
-            # V3.1 代码层评分修正（流式接口也要执行）
+            # V3.2 代码层评分修正（流式接口也要执行）
             scoring_result = apply_scoring_rules(
                 llm_score_general=summary.get("score_general", 0),
                 llm_score_specific=summary.get("score_specific", 0),

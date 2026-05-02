@@ -80,7 +80,7 @@ def evaluate_text(app_config: Dict, text_content: str, metadata: Dict) -> Dict:
     objective_matrix = structured.get("objective_matrix", {})
     severity_counts = count_issue_severity(structured["issues"])
 
-    # ── 代码层评分控制器修正（V3.1）──
+    # ── 代码层评分控制器修正（V3.2）──
     scoring_result = apply_scoring_rules(
         llm_score_general=summary.get("score_general", 0),
         llm_score_specific=summary.get("score_specific", 0),

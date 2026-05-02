@@ -1,5 +1,5 @@
 """
-Scoring Controller V3.1
+Scoring Controller V3.2
 纯代码层评分控制器 —— 不依赖 LLM，所有规则硬编码。
 职责：接收 LLM 原始输出 → 锚点校验 → 上限锁定 → TCI 修正 → 输出最终 adjusted_score。
 """
