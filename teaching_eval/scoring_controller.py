@@ -16,6 +16,10 @@ def _safe_number(value: Any, default: float = 0) -> float:
         return default
 
 
+def _clamp(value: Any, minimum: float, maximum: float) -> float:
+    return max(minimum, min(_safe_number(value), maximum))
+
+
 def _conclusion_from_score(score: float) -> str:
     if score >= 90:
         return "优秀"
@@ -106,11 +110,50 @@ def compute_buffer(issues: List[Dict[str, Any]]) -> Dict[str, Any]:
 # TCI 修正规则
 # ──────────────────────────────────────────────
 
+def _has_tci_signal(tci: Dict[str, Any]) -> bool:
+    if not isinstance(tci, dict):
+        return False
+    if str(tci.get("consistency_level") or "").strip():
+        return True
+    return any(
+        tci.get(key) not in (None, "") and _safe_number(tci.get(key)) > 0
+        for key in ("total", "l1_homepage", "l2_objectives", "l3_process")
+    )
+
+
+def _resolve_tci_total(tci: Dict[str, Any]):
+    if not isinstance(tci, dict):
+        return None
+
+    raw_total = tci.get("total")
+    total = _safe_number(raw_total)
+    if raw_total not in (None, "") and total > 0:
+        return total
+
+    level = str(tci.get("consistency_level") or "").strip()
+    if not level:
+        return None
+    if "轻度" in level:
+        return 70
+    if "中度" in level:
+        return 50
+    if "严重" in level:
+        return 30
+    if "高度" in level or "基本" in level:
+        return 80
+    return None
+
+
 def apply_tci_rules(tci: Dict[str, Any], current_ceiling: int) -> Dict[str, Any]:
     """
     应用 TCI 四级修正规则，返回 tci_deduction 和更新后的 ceiling。
     """
-    tci_total = _safe_number(tci.get("total") if isinstance(tci, dict) else None)
+    if not _has_tci_signal(tci):
+        return {"tci_deduction": 0, "ceiling": current_ceiling}
+
+    tci_total = _resolve_tci_total(tci)
+    if tci_total is None:
+        return {"tci_deduction": 0, "ceiling": current_ceiling}
 
     if tci_total >= 80:
         return {"tci_deduction": 0, "ceiling": current_ceiling}
@@ -138,9 +181,10 @@ def apply_scoring_rules(
     buffer_deduction: float = 0,
 ) -> Dict[str, Any]:
     """
-    代码层评分控制器 —— 只做修正，不重算分数。
+    代码层评分控制器 —— 统一归口总分、缓冲带、TCI 和结论。
 
-    LLM 已经正确算出 score_general + score_specific = score_total。
+    score_total 由 score_general + score_specific 归一化得到；只有两个分项都缺失时才
+    回退使用 LLM 的 score_total。adjusted_score 不信任 LLM 预扣后的值，避免二次扣分。
     本函数职责：
       1. 检测上限锁定（从 issues 关键词）
       2. 应用 TCI 修正（deduction / ceiling）
@@ -157,10 +201,20 @@ def apply_scoring_rules(
             'buffer_deduction': int,
             'vetoed': bool,
             'conclusion': str,
+            'tci_deduction': int,
+            'ceiling': int,
         }
     """
     tci = tci or {}
     issues = issues or []
+
+    score_general = _clamp(llm_score_general, 0, 45)
+    score_specific = _clamp(llm_score_specific, 0, 55)
+    provided_total = _clamp(llm_score_total, 0, 100)
+    if score_general > 0 or score_specific > 0:
+        score_total = min(score_general + score_specific, 100)
+    else:
+        score_total = provided_total
 
     # ── 1. 上限锁定（issues 检测）──
     ceiling = detect_ceiling_from_issues(issues)
@@ -172,18 +226,11 @@ def apply_scoring_rules(
 
     # ── 3. Buffer 计算 ──
     buffer_info = compute_buffer(issues)
-    # 如果 LLM 已经给了 buffer，以 LLM 为准；否则用代码层计算
-    if buffer_level and buffer_level != "无":
-        # LLM 已有判定，保持其值
-        pass
-    else:
-        buffer_level = buffer_info["buffer_level"]
-        buffer_deduction = buffer_info["buffer_deduction"]
+    buffer_level = buffer_info["buffer_level"]
+    buffer_deduction = buffer_info["buffer_deduction"]
 
     # ── 4. 合成 adjusted_score ──
-    # 先用 LLM 的 adjusted_score，如果没有则用 score_total - deductions
-    base_adjusted = llm_adjusted_score if llm_adjusted_score > 0 else llm_score_total
-    adjusted_score = base_adjusted - buffer_deduction - tci_deduction
+    adjusted_score = score_total - buffer_deduction - tci_deduction
     adjusted_score = min(adjusted_score, ceiling)
     adjusted_score = max(0, int(adjusted_score))
 
@@ -194,12 +241,14 @@ def apply_scoring_rules(
         conclusion = _conclusion_from_score(adjusted_score)
 
     return {
-        "score_general": int(llm_score_general),
-        "score_specific": int(llm_score_specific),
-        "score_total": int(llm_score_total),
+        "score_general": int(score_general),
+        "score_specific": int(score_specific),
+        "score_total": int(score_total),
         "adjusted_score": adjusted_score,
         "buffer_level": buffer_level,
         "buffer_deduction": int(buffer_deduction),
         "vetoed": bool(vetoed),
         "conclusion": conclusion,
+        "tci_deduction": int(tci_deduction),
+        "ceiling": int(ceiling),
     }

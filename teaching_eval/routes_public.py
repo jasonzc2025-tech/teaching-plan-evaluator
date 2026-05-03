@@ -7,6 +7,7 @@ from .llm_client import LLMClient
 from .parser import coerce_result, count_issue_severity, extract_json_and_markdown
 from .precheck import run_precheck
 from .prompts import PROMPT_VERSION, build_system_prompt
+from .report_markdown import sync_report_markdown
 from .repository import get_next_review_round, save_evaluation
 from .scoring_controller import apply_scoring_rules
 from .services import get_text_content
@@ -155,6 +156,8 @@ def evaluate_stream():
             severity_counts = count_issue_severity(structured["issues"])
             summary = structured["summary"]
             document_metadata = structured.get("document_metadata", {})
+            tci = structured.get("tci", {})
+            objective_matrix = structured.get("objective_matrix", {})
 
             # V3.2 代码层评分修正（流式接口也要执行）
             scoring_result = apply_scoring_rules(
@@ -177,6 +180,7 @@ def evaluate_stream():
             summary["buffer_deduction"] = scoring_result["buffer_deduction"]
             summary["vetoed"] = scoring_result["vetoed"]
             summary["conclusion"] = scoring_result["conclusion"]
+            markdown = sync_report_markdown(markdown, summary, scoring_result)
 
 
             result = {
@@ -198,13 +202,13 @@ def evaluate_stream():
                 "buffer_deduction": summary.get("buffer_deduction", 0),
                 "vetoed": summary["vetoed"],
                 "conclusion": summary["conclusion"],
-                "tci_total": summary.get("tci_total", 0),
-                "tci_level": summary.get("tci_level", ""),
-                "obj_matrix_total": summary.get("obj_matrix_total", 0),
-                "obj_completeness": summary.get("obj_completeness", 0),
-                "obj_reasonableness": summary.get("obj_reasonableness", 0),
-                "obj_measurability": summary.get("obj_measurability", 0),
-                "obj_alignment": summary.get("obj_alignment", 0),
+                "tci_total": tci.get("total", 0),
+                "tci_level": tci.get("consistency_level", ""),
+                "obj_matrix_total": objective_matrix.get("total_score", 0),
+                "obj_completeness": (objective_matrix.get("completeness") or {}).get("score", 0),
+                "obj_reasonableness": (objective_matrix.get("reasonableness") or {}).get("score", 0),
+                "obj_measurability": (objective_matrix.get("measurability") or {}).get("score", 0),
+                "obj_alignment": (objective_matrix.get("alignment") or {}).get("score", 0),
                 "check_log": structured.get("check_log", []),
                 "char_count": len(text_content),
                 "duration_sec": duration,

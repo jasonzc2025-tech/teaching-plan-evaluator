@@ -773,7 +773,7 @@ function renderFinalResult(data){
   else if(adj>=80){cls='good';icon='✅';con='良好';}
   else if(adj>=70){cls='medium';icon='🔵';con='中等';}
   else if(adj>=60){cls='pass';icon='⚠️';con='及格';}
-  else{cls='fail';icon='🔴';con='不及格';}
+  else{cls='fail';icon='🔴';con='不合格';}
   setConclusionBanner(cls,icon,con);
   lastMarkdown=data.result_markdown||'';
   document.getElementById('markdown-box').textContent=lastMarkdown;

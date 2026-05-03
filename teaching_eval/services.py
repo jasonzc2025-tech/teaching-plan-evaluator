@@ -6,6 +6,7 @@ from .extractors import allowed_file, extract_text_from_docx, extract_text_from_
 from .llm_client import LLMClient
 from .parser import coerce_result, count_issue_severity, extract_json_and_markdown
 from .prompts import PROMPT_VERSION, build_system_prompt
+from .report_markdown import sync_report_markdown
 from .scoring_controller import apply_scoring_rules
 
 
@@ -95,6 +96,7 @@ def evaluate_text(app_config: Dict, text_content: str, metadata: Dict) -> Dict:
     summary["buffer_deduction"] = scoring_result["buffer_deduction"]
     summary["vetoed"] = scoring_result["vetoed"]
     summary["conclusion"] = scoring_result["conclusion"]
+    markdown = sync_report_markdown(markdown, summary, scoring_result)
 
     result = {
         "filename": metadata.get("filename", ""),

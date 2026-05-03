@@ -130,7 +130,7 @@ def _conclusion_from_score(score: float) -> str:
         return "中等"
     if score >= 60:
         return "及格"
-    return "不及格"
+    return "不合格"
 
 
 def _normalize_conclusion(value: str, adjusted_score: float) -> str:
