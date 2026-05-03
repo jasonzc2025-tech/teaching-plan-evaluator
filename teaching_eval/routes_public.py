@@ -7,7 +7,7 @@ from .llm_client import LLMClient
 from .parser import coerce_result, count_issue_severity, extract_json_and_markdown
 from .precheck import run_precheck
 from .prompts import PROMPT_VERSION, build_system_prompt
-from .repository import save_evaluation
+from .repository import get_next_review_round, save_evaluation
 from .scoring_controller import apply_scoring_rules
 from .services import get_text_content
 
@@ -34,15 +34,7 @@ def get_round():
     if not teacher or not course:
         return jsonify({"round": 1})
     try:
-        import sqlite3
-        conn = sqlite3.connect(current_app.config["DB_PATH"])
-        row = conn.execute(
-            "SELECT COUNT(*) FROM records WHERE teacher_name=? AND course_title=?",
-            (teacher, course)
-        ).fetchone()
-        conn.close()
-        next_round = (row[0] or 0) + 1
-        return jsonify({"round": next_round})
+        return jsonify({"round": get_next_review_round(current_app.config["DB_PATH"], teacher, course)})
     except Exception as e:
         return jsonify({"round": 1, "error": str(e)})
 
@@ -82,11 +74,23 @@ def evaluate():
         )
         from .services import evaluate_text
         result = evaluate_text(current_app.config, text_content, metadata)
+        result["review_round"] = get_next_review_round(
+            current_app.config["DB_PATH"],
+            result.get("teacher_name", ""),
+            result.get("course_title", ""),
+        )
         record_id = save_evaluation(current_app.config["DB_PATH"], result)
         return jsonify({
             "record_id": record_id,
             "result_markdown": result["raw_markdown"],
             "summary": result["structured_json"]["summary"],
+            "document_metadata": {
+                "category": result.get("actual_type", "不详"),
+                "department": result.get("department", "不详"),
+                "teacher_name": result.get("teacher_name", "不详"),
+                "course_title": result.get("course_title", "不详"),
+                "review_round": result.get("review_round", 1),
+            },
             "issues": result["issues"],
             "clause_scores": result["clause_scores"],
             "strengths": result["strengths"],
@@ -150,6 +154,7 @@ def evaluate_stream():
             structured = coerce_result(structured, markdown)
             severity_counts = count_issue_severity(structured["issues"])
             summary = structured["summary"]
+            document_metadata = structured.get("document_metadata", {})
 
             # V3.2 代码层评分修正（流式接口也要执行）
             scoring_result = apply_scoring_rules(
@@ -177,12 +182,12 @@ def evaluate_stream():
             result = {
                 "filename": metadata.get("filename", ""),
                 "source_mode": metadata.get("source_mode", "text"),
-                "declared_type": metadata.get("declared_type") or summary["declared_type"],
+                "declared_type": summary["declared_type"],
                 "actual_type": summary["actual_type"],
-                "department": metadata.get("department", ""),
-                "teacher_name": metadata.get("teacher_name", ""),
-                "course_title": metadata.get("course_title", ""),
-                "review_round": metadata.get("review_round", 1),
+                "department": document_metadata.get("department", "不详"),
+                "teacher_name": document_metadata.get("teacher_name", "不详"),
+                "course_title": document_metadata.get("course_title", "不详"),
+                "review_round": 1,
                 "prompt_version": PROMPT_VERSION,
                 "model_name": cfg["LLM_MODEL_NAME"],
                 "score_general": summary["score_general"],
@@ -216,6 +221,11 @@ def evaluate_stream():
                 "raw_markdown": markdown,
                 "status": "success",
             }
+            result["review_round"] = get_next_review_round(
+                cfg["DB_PATH"],
+                result.get("teacher_name", ""),
+                result.get("course_title", ""),
+            )
 
             record_id = save_evaluation(cfg["DB_PATH"], result)
 
@@ -224,6 +234,13 @@ def evaluate_stream():
                 "record_id": record_id,
                 "result_markdown": markdown,
                 "summary": summary,
+                "document_metadata": {
+                    "category": result.get("actual_type", "不详"),
+                    "department": result.get("department", "不详"),
+                    "teacher_name": result.get("teacher_name", "不详"),
+                    "course_title": result.get("course_title", "不详"),
+                    "review_round": result.get("review_round", 1),
+                },
                 "issues": structured["issues"],
                 "clause_scores": structured["clause_scores"],
                 "strengths": structured["strengths"],

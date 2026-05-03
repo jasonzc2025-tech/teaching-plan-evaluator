@@ -12,6 +12,25 @@ MARKDOWN_PATTERN = re.compile(
     flags=re.DOTALL,
 )
 ALLOWED_CONCLUSIONS = {"优秀", "良好", "中等", "及格", "不合格"}
+UNKNOWN_VALUE = "不详"
+UNKNOWN_EQUIVALENTS = {
+    "",
+    "-",
+    "--",
+    "—",
+    "未知",
+    "未标注",
+    "未注明",
+    "未提供",
+    "未识别",
+    "无法识别",
+    "不明确",
+    "无",
+    "无明确",
+    "null",
+    "none",
+    "n/a",
+}
 
 
 def _safe_number(value: Any, default: float = 0) -> float:
@@ -21,6 +40,21 @@ def _safe_number(value: Any, default: float = 0) -> float:
         return float(value)
     except (TypeError, ValueError):
         return default
+
+
+def _clean_metadata_value(value: Any) -> str:
+    text = str(value or "").strip()
+    if text.lower() in UNKNOWN_EQUIVALENTS:
+        return UNKNOWN_VALUE
+    return text
+
+
+def _first_metadata_value(*values: Any) -> str:
+    for value in values:
+        cleaned = _clean_metadata_value(value)
+        if cleaned != UNKNOWN_VALUE:
+            return cleaned
+    return UNKNOWN_VALUE
 
 
 def extract_json_and_markdown(response_text: str) -> Tuple[Dict[str, Any], str]:
@@ -54,8 +88,8 @@ def build_fallback_summary(markdown_text: str) -> Dict[str, Any]:
     buffer_level = "无"
     return {
         "summary": {
-            "declared_type": declared_type or "未知",
-            "actual_type": declared_type or "未知",
+            "declared_type": declared_type or UNKNOWN_VALUE,
+            "actual_type": declared_type or UNKNOWN_VALUE,
             "score_general": _safe_number(score_general),
             "score_specific": _safe_number(score_specific),
             "score_total": _safe_number(score_total),
@@ -64,6 +98,11 @@ def build_fallback_summary(markdown_text: str) -> Dict[str, Any]:
             "buffer_deduction": buffer_deduction,
             "vetoed": vetoed,
             "conclusion": conclusion or _conclusion_from_score(adjusted_score),
+        },
+        "document_metadata": {
+            "department": UNKNOWN_VALUE,
+            "teacher_name": UNKNOWN_VALUE,
+            "course_title": UNKNOWN_VALUE,
         },
         "clause_scores": [],
         "issues": [],
@@ -122,8 +161,8 @@ def coerce_result(structured: Dict[str, Any], markdown_text: str) -> Dict[str, A
         summary["adjusted_score"] = max(0, summary["score_total"] - summary["buffer_deduction"])
     summary["buffer_level"] = str(summary.get("buffer_level") or "无")
     summary["vetoed"] = bool(summary.get("vetoed"))
-    summary["declared_type"] = summary.get("declared_type") or "未知"
-    summary["actual_type"] = summary.get("actual_type") or summary["declared_type"]
+    summary["declared_type"] = _clean_metadata_value(summary.get("declared_type"))
+    summary["actual_type"] = _first_metadata_value(summary.get("actual_type"), summary["declared_type"])
     # 若触发否决，强制结论为不合格
     if summary["vetoed"]:
         summary["conclusion"] = "不合格"
@@ -137,6 +176,52 @@ def coerce_result(structured: Dict[str, Any], markdown_text: str) -> Dict[str, A
     tci = structured.get("tci") or {}
     objective_matrix = structured.get("objective_matrix") or {}
     check_log = structured.get("check_log") or []
+    raw_doc_meta = structured.get("document_metadata") or structured.get("metadata") or {}
+    if not isinstance(raw_doc_meta, dict):
+        raw_doc_meta = {}
+    summary["actual_type"] = _first_metadata_value(
+        summary.get("actual_type"),
+        raw_doc_meta.get("category"),
+        raw_doc_meta.get("type"),
+        raw_doc_meta.get("类别"),
+        summary["declared_type"],
+    )
+    document_metadata = {
+        "department": _first_metadata_value(
+            raw_doc_meta.get("department"),
+            raw_doc_meta.get("科室"),
+            summary.get("department"),
+            summary.get("科室"),
+        ),
+        "teacher_name": _first_metadata_value(
+            raw_doc_meta.get("teacher_name"),
+            raw_doc_meta.get("teacher"),
+            raw_doc_meta.get("name"),
+            raw_doc_meta.get("姓名"),
+            raw_doc_meta.get("带教老师"),
+            summary.get("teacher_name"),
+            summary.get("teacher"),
+            summary.get("name"),
+            summary.get("姓名"),
+            summary.get("带教老师"),
+        ),
+        "course_title": _first_metadata_value(
+            raw_doc_meta.get("course_title"),
+            raw_doc_meta.get("course"),
+            raw_doc_meta.get("title"),
+            raw_doc_meta.get("课程内容"),
+            raw_doc_meta.get("课程名称"),
+            summary.get("course_title"),
+            summary.get("course"),
+            summary.get("title"),
+            summary.get("课程内容"),
+            summary.get("课程名称"),
+        ),
+    }
+    summary["department"] = document_metadata["department"]
+    summary["teacher_name"] = document_metadata["teacher_name"]
+    summary["course_title"] = document_metadata["course_title"]
+    structured["document_metadata"] = document_metadata
 
     structured["clause_scores"] = [
         {

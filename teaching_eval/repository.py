@@ -5,6 +5,25 @@ from typing import Dict, List
 
 from .db import get_connection
 
+UNKNOWN_VALUE = "不详"
+
+
+def get_next_review_round(db_path: str, teacher_name: str, course_title: str) -> int:
+    teacher = (teacher_name or "").strip()
+    course = (course_title or "").strip()
+    if not teacher or not course or teacher == UNKNOWN_VALUE or course == UNKNOWN_VALUE:
+        return 1
+
+    conn = get_connection(db_path)
+    try:
+        row = conn.execute(
+            "SELECT COUNT(*) AS c FROM records WHERE teacher_name=? AND course_title=?",
+            (teacher, course),
+        ).fetchone()
+        return (row["c"] or 0) + 1
+    finally:
+        conn.close()
+
 
 def save_evaluation(db_path: str, payload: Dict) -> int:
     conn = get_connection(db_path)

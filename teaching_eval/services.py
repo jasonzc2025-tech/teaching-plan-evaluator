@@ -41,18 +41,11 @@ def get_text_content(flask_request, allowed_extensions, min_len, max_len):
         raise ValueError("教案内容过短，请确认文件是否正确上传")
 
     metadata = {
-        "department": flask_request.form.get("department", "").strip(),
-        "teacher_name": flask_request.form.get("teacher_name", "").strip(),
-        "course_title": flask_request.form.get("course_title", "").strip(),
-        "declared_type": flask_request.form.get("declared_type", "").strip(),
+        "declared_type": "",
         "review_round": 1,
         "filename": filename,
         "source_mode": source_mode,
     }
-    try:
-        metadata["review_round"] = int(flask_request.form.get("review_round") or 1)
-    except (TypeError, ValueError):
-        metadata["review_round"] = 1
     return text_content, metadata
 
 
@@ -76,6 +69,7 @@ def evaluate_text(app_config: Dict, text_content: str, metadata: Dict) -> Dict:
     structured, markdown = extract_json_and_markdown(raw_response)
     structured = coerce_result(structured, markdown)
     summary = structured["summary"]
+    document_metadata = structured.get("document_metadata", {})
     tci = structured.get("tci", {})
     objective_matrix = structured.get("objective_matrix", {})
     severity_counts = count_issue_severity(structured["issues"])
@@ -105,11 +99,11 @@ def evaluate_text(app_config: Dict, text_content: str, metadata: Dict) -> Dict:
     result = {
         "filename": metadata.get("filename", ""),
         "source_mode": metadata.get("source_mode", "text"),
-        "declared_type": metadata.get("declared_type") or summary["declared_type"],
+        "declared_type": summary["declared_type"],
         "actual_type": summary["actual_type"],
-        "department": metadata.get("department", ""),
-        "teacher_name": metadata.get("teacher_name", ""),
-        "course_title": metadata.get("course_title", ""),
+        "department": document_metadata.get("department", "不详"),
+        "teacher_name": document_metadata.get("teacher_name", "不详"),
+        "course_title": document_metadata.get("course_title", "不详"),
         "review_round": metadata.get("review_round", 1),
         "prompt_version": PROMPT_VERSION,
         "model_name": app_config["LLM_MODEL_NAME"],

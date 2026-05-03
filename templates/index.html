@@ -56,12 +56,14 @@
 .guide-check-title small{font-size:11px;font-weight:500;color:var(--muted);}
 .guide-checklist{display:grid;gap:6px;margin-top:10px;font-size:12px;color:var(--text);}
 .guide-check-item{display:flex;gap:7px;align-items:flex-start;}
+.template-helper{font-size:12px;color:var(--muted);line-height:1.6;margin:8px 0 0;}
 .meta-title{font-size:12px;font-weight:600;color:var(--blue-dark);margin:14px 0 8px;}
 .meta-helper{margin-top:-4px;margin-bottom:8px;font-size:12px;color:var(--muted);line-height:1.6;}
-.meta-parsed.editable{display:grid;}
-.meta-parsed.editable .meta-item{background:var(--card-2);border:1px solid var(--line);}
-.meta-input{width:100%;border:0;background:transparent;color:var(--blue-dark);font:inherit;font-weight:500;outline:none;min-width:0;}
-.meta-input::placeholder{color:#9aa8c2;}
+.meta-parsed.ai-meta{display:grid;}
+.meta-parsed.ai-meta .meta-item{background:var(--card-2);border:1px solid var(--line);}
+.meta-item-value.pending{color:var(--muted);}
+.meta-item-value.unknown{color:var(--muted);}
+.meta-status-note{margin-top:8px;font-size:12px;color:var(--muted);line-height:1.6;}
 .result-section{padding:0;background:#fff;overflow:hidden;}
 .result-section-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;background:linear-gradient(90deg,#f7faff,#eef5ff);border-bottom:1px solid var(--line);}
 .result-section-head h3{margin-bottom:1px;font-size:14px;color:var(--blue-dark);}
@@ -93,15 +95,16 @@
 <div class="container page-grid">
   <div>
     <div class="card">
-      <div class="card-header"><div class="card-icon">📑</div><h2>教案类型</h2></div>
+      <div class="card-header"><div class="card-icon">📑</div><h2>写作模板</h2></div>
       <div class="type-selector" id="type-selector">
-        <button class="type-btn active" data-value="">自动识别</button>
+        <button class="type-btn active" data-value="">通用模板</button>
         <button class="type-btn" data-value="教学查房">教学查房</button>
         <button class="type-btn" data-value="病例讨论">病例讨论</button>
         <button class="type-btn" data-value="临床小讲课">临床小讲课</button>
         <button class="type-btn" data-value="技能培训">技能培训</button>
         <button class="type-btn" data-value="教学门诊">教学门诊</button>
       </div>
+      <div class="template-helper">这里只用于查看写作模板，不作为评审类别；评审类别会由 AI 根据文档内容识别。</div>
       <input type="hidden" id="declared-type-input" value="">
       <div class="guide-panel" id="guide-panel">
         <div class="guide-head">
@@ -135,13 +138,15 @@
         <button class="btn sm" onclick="clearFile()" style="border-color:var(--line);font-size:11px;padding:4px 10px;">清除</button>
       </div>
       <div class="meta-title">教案信息</div>
-      <div class="meta-helper">系统会根据文件名自动填写，请确认是否正确；如有误可直接修改。</div>
-      <div class="meta-parsed editable" id="meta-parsed">
-        <label class="meta-item"><div class="meta-item-label">科室</div><input class="meta-input" id="meta-dept" placeholder="可留空"></label>
-        <label class="meta-item"><div class="meta-item-label">带教老师</div><input class="meta-input" id="meta-teacher" placeholder="可留空"></label>
-        <label class="meta-item"><div class="meta-item-label">课程名称</div><input class="meta-input" id="meta-course" placeholder="可留空"></label>
-        <label class="meta-item"><div class="meta-item-label">评审轮次</div><input class="meta-input" id="meta-round" type="number" min="1" value="1"></label>
+      <div class="meta-helper">评审信息以文档内容为准；开始分析后由 AI 自动识别并回填。识别不到显示“不详”，不支持手动修改；如需更正，请完善文档后重新上传。</div>
+      <div class="meta-parsed ai-meta" id="meta-parsed">
+        <div class="meta-item"><div class="meta-item-label">类别</div><div class="meta-item-value pending" id="meta-category">待识别</div></div>
+        <div class="meta-item"><div class="meta-item-label">科室</div><div class="meta-item-value pending" id="meta-dept">待识别</div></div>
+        <div class="meta-item"><div class="meta-item-label">姓名</div><div class="meta-item-value pending" id="meta-teacher">待识别</div></div>
+        <div class="meta-item"><div class="meta-item-label">课程内容</div><div class="meta-item-value pending" id="meta-course">待识别</div></div>
+        <div class="meta-item"><div class="meta-item-label">评审轮次</div><div class="meta-item-value pending" id="meta-round">待计算</div></div>
       </div>
+      <div class="meta-status-note" id="meta-status-note">上传文档后点击开始分析，系统会自动识别以上信息并用于评审和统计。</div>
       <div class="divider">或粘贴教案文字</div>
       <textarea id="text-content" rows="6" placeholder="将教案文字内容粘贴到此处..."></textarea>
       <div style="margin-top:16px;">
@@ -169,6 +174,7 @@
       <ul style="list-style:none;display:flex;flex-direction:column;gap:8px;font-size:13px;color:var(--muted);">
         <li>📖 依据国家《住培教学活动指南》评审</li>
         <li>📊 百分制条款评分，每分有证据依据</li>
+        <li>🔒 类别、科室、姓名和课程内容由 AI 根据文档内容识别，无法识别显示“不详”</li>
         <li>📄 建议提交 Word .docx 文件效果最佳</li>
       </ul>
     </div>
@@ -244,15 +250,49 @@
 
 <script>
 var currentGuide={template:'',checklist:[]};
+var UNKNOWN_META='不详';
+var UNKNOWN_META_VALUES=['','-','--','—','未知','未标注','未注明','未提供','未识别','无法识别','不明确','无','无明确','null','none','n/a'];
 
-function getInputValue(id){
-  var el=document.getElementById(id);
-  return el ? (el.value||'').trim() : '';
+function normalizeMetaValue(value){
+  var text=(value==null?'':String(value)).trim();
+  return UNKNOWN_META_VALUES.indexOf(text.toLowerCase())!==-1?UNKNOWN_META:text;
 }
 
-function setInputValue(id,value){
+function setMetaValue(id,value,options){
   var el=document.getElementById(id);
-  if(el)el.value=(value&&value!=='—')?value:'';
+  if(!el)return;
+  var pending=options&&options.pending;
+  var text=pending?String(value||'待识别'):normalizeMetaValue(value);
+  el.textContent=text;
+  el.title=text;
+  el.classList.toggle('pending',!!pending);
+  el.classList.toggle('unknown',!pending&&text===UNKNOWN_META);
+}
+
+function setMetaPending(label){
+  setMetaValue('meta-category',label||'待识别',{pending:true});
+  setMetaValue('meta-dept',label||'待识别',{pending:true});
+  setMetaValue('meta-teacher',label||'待识别',{pending:true});
+  setMetaValue('meta-course',label||'待识别',{pending:true});
+  setMetaValue('meta-round',label==='AI识别中'?'待计算':'待计算',{pending:true});
+  var note=document.getElementById('meta-status-note');
+  if(note)note.textContent=label==='AI识别中'
+    ?'AI 正在从文档内容中识别基本信息，识别不到的项目会显示为“不详”。'
+    :'上传文档后点击开始分析，系统会自动识别以上信息并用于评审和统计。';
+}
+
+function updateDocumentMetadata(data){
+  data=data||{};
+  var summary=data.summary||{};
+  var meta=data.document_metadata||{};
+  setMetaValue('meta-category',meta.category||summary.actual_type||summary.declared_type);
+  setMetaValue('meta-dept',meta.department||summary.department);
+  setMetaValue('meta-teacher',meta.teacher_name||summary.teacher_name);
+  setMetaValue('meta-course',meta.course_title||summary.course_title);
+  if(meta.review_round!=null)setMetaValue('meta-round','第'+meta.review_round+'轮');
+  else setMetaValue('meta-round','待计算',{pending:true});
+  var note=document.getElementById('meta-status-note');
+  if(note)note.textContent='以上信息由 AI 根据文档内容自动识别，仅用于本次评审和统计，不支持手动修改。';
 }
 
 function renderGuide(data){
@@ -281,10 +321,10 @@ document.querySelectorAll('.type-btn').forEach(function(btn){
     btn.classList.add('active');
     document.getElementById('declared-type-input').value=btn.dataset.value;
     loadActivityGuide(btn.dataset.value);
-    resetPrecheckGate();
   });
 });
 loadActivityGuide('');
+setMetaPending('待识别');
 
 var fileInput=document.getElementById('file-input');
 var uploadZone=document.getElementById('upload-zone');
@@ -295,11 +335,9 @@ uploadZone.addEventListener('drop',function(e){
   if(e.dataTransfer.files[0]){fileInput.files=e.dataTransfer.files;handleFileChange();}
 });
 fileInput.addEventListener('change',handleFileChange);
-document.getElementById('meta-teacher').addEventListener('blur',updateReviewRound);
-document.getElementById('meta-course').addEventListener('blur',updateReviewRound);
-document.getElementById('text-content').addEventListener('input',resetPrecheckGate);
-['meta-dept','meta-teacher','meta-course','meta-round'].forEach(function(id){
-  document.getElementById(id).addEventListener('input',resetPrecheckGate);
+document.getElementById('text-content').addEventListener('input',function(){
+  resetPrecheckGate();
+  setMetaPending('待识别');
 });
 
 function handleFileChange(){
@@ -309,44 +347,14 @@ function handleFileChange(){
   document.getElementById('file-selected-name').textContent=file.name+'  ('+(file.size/1024).toFixed(0)+' KB)';
   document.getElementById('file-selected').classList.add('show');
   uploadZone.style.display='none';
-  parseFilenameMetadata(file.name);
+  setMetaPending('待识别');
 }
 function clearFile(){
   resetPrecheckGate();
   fileInput.value='';
   document.getElementById('file-selected').classList.remove('show');
   uploadZone.style.display='';
-  setInputValue('meta-dept','');
-  setInputValue('meta-teacher','');
-  setInputValue('meta-course','');
-  setInputValue('meta-round','1');
-}
-function parseFilenameMetadata(filename){
-  var name=filename.replace(/\.(docx?|pdf|txt)$/i,'');
-  var parts=name.split(/[-_]/);
-  var dept='—',teacher='—',course='—';
-  if(parts.length>=4){dept=parts[1]||'—';teacher=parts[2]||'—';course=parts.slice(3).join('-')||'—';}
-  else if(parts.length===3){dept=parts[0];teacher=parts[1];course=parts[2];}
-  else if(parts.length===2){dept=parts[0];course=parts[1];}
-  else{course=name;}
-  setInputValue('meta-dept',dept.trim());
-  setInputValue('meta-teacher',teacher.trim());
-  setInputValue('meta-course',course.trim());
-  updateReviewRound();
-}
-
-function updateReviewRound(){
-  var teacher=getInputValue('meta-teacher');
-  var course=getInputValue('meta-course');
-  setInputValue('meta-round','1');
-  if(teacher&&course){
-    fetch('/get_round?teacher_name='+encodeURIComponent(teacher)+'&course_title='+encodeURIComponent(course))
-      .then(function(r){return r.json();})
-      .then(function(d){
-        setInputValue('meta-round',String(d.round||1));
-      })
-      .catch(function(){setInputValue('meta-round','1');});
-  }
+  setMetaPending('待识别');
 }
 
 function escapeHtml(t){return(t||'').replace(/[&<>"']/g,function(m){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m];});}
@@ -420,11 +428,7 @@ function buildSubmissionFormData(){
   if(file)formData.append('file',file);
   var tc=document.getElementById('text-content').value.trim();
   if(tc)formData.append('text_content',tc);
-  formData.append('declared_type',document.getElementById('declared-type-input').value);
-  formData.append('department',getInputValue('meta-dept'));
-  formData.append('teacher_name',getInputValue('meta-teacher'));
-  formData.append('course_title',getInputValue('meta-course'));
-  formData.append('review_round',getInputValue('meta-round')||'1');
+  formData.append('declared_type','');
   return formData;
 }
 
@@ -624,6 +628,7 @@ async function submitEval(){
   }
 
   precheckConfirmed=false;
+  setMetaPending('AI识别中');
   document.getElementById('placeholder').style.display='flex';
   document.getElementById('result-panel').style.display='none';
   document.getElementById('stream-bar').classList.add('show');
@@ -681,6 +686,7 @@ async function submitEval(){
                   var parsed=JSON.parse(jsonStr);
                   var summary=parsed.summary||{};
                   if(summary.score_total!=null||summary.adjusted_score!=null){
+                    updateDocumentMetadata({summary:summary,document_metadata:parsed.document_metadata||{}});
                     updateScoreFromData(summary);
                     jsonExtracted=true;
                     document.getElementById('placeholder').style.display='none';
@@ -746,6 +752,7 @@ async function submitEval(){
 
 function renderFinalResult(data){
   var summary=data.summary||{};
+  updateDocumentMetadata(data);
   updateScoreFromData(summary);
   // 用adjusted_score重算等第，不依赖LLM的conclusion
   var adj=summary.adjusted_score!=null?Number(summary.adjusted_score):Number(summary.score_total||0);

@@ -23,6 +23,10 @@ def _read_block(filename: str) -> str:
 def build_system_prompt(declared_type: str) -> str:
     base = _read_block("base_constitution.md")
     output_spec = _read_block("output_spec.md")
-    type_block = _read_block(TYPE_TO_BLOCK.get(declared_type, "criteria_general.md"))
-    parts = [part for part in (base, type_block, output_spec) if part]
+    if declared_type in TYPE_TO_BLOCK:
+        criteria_blocks = [_read_block(TYPE_TO_BLOCK[declared_type])]
+    else:
+        criteria_blocks = [_read_block("criteria_general.md")]
+        criteria_blocks.extend(_read_block(filename) for filename in TYPE_TO_BLOCK.values())
+    parts = [part for part in (base, *criteria_blocks, output_spec) if part]
     return "\n\n".join(parts)

@@ -16,6 +16,9 @@ JSON 结构如下（字段名必须一致）：
   "summary": {
     "declared_type": "字符串",
     "actual_type": "字符串",
+    "department": "科室或不详",
+    "teacher_name": "姓名或不详",
+    "course_title": "课程内容或不详",
     "score_general": 数字,
     "score_specific": 数字,
     "score_total": 数字,
@@ -24,6 +27,11 @@ JSON 结构如下（字段名必须一致）：
     "buffer_deduction": 数字,
     "vetoed": true或false,
     "conclusion": "优秀/良好/中等/及格/不合格"
+  },
+  "document_metadata": {
+    "department": "科室或不详",
+    "teacher_name": "姓名或不详",
+    "course_title": "课程内容或不详"
   },
   "tci": {
     "total": 数字,
@@ -82,9 +90,12 @@ JSON 结构如下（字段名必须一致）：
 }
 
 说明：
-1. `conclusion` 必须是五档之一：`优秀`、`良好`、`中等`、`及格`、`不合格`。
-2. 若触发否决项，`vetoed` 必须为 true，`conclusion` 强制为 `不合格`。
-3. `adjusted_score` 计算顺序：
+1. `actual_type` 为 AI 从文档正文识别出的教案类别；无法明确识别时填 `不详`。
+2. `department`、`teacher_name`、`course_title` 必须从文档正文、首页、标题或内部结构识别；无法明确识别时填 `不详`。不得根据文件名、上传者或外部信息补全。
+3. `summary` 与 `document_metadata` 中的三项基本信息必须保持一致。
+4. `conclusion` 必须是五档之一：`优秀`、`良好`、`中等`、`及格`、`不合格`。
+5. 若触发否决项，`vetoed` 必须为 true，`conclusion` 强制为 `不合格`。
+6. `adjusted_score` 计算顺序：
    - 先计算 `score_total = score_general + score_specific`
    - 再减去 `buffer_deduction` 和 TCI 修正扣分
    - 若触发上限锁定，则 `adjusted_score` 不超过锁定上限（55 或 60 或 65）
@@ -100,7 +111,7 @@ JSON 结构如下（字段名必须一致）：
 | 0 | 0 | 无 | 0 |
 
 说明：`buffer_level` 与 `buffer_deduction` 仅用于表达非否决类高风险问题的额外扣分，不替代否决。
-5. `clause_scores` 必须同时包含通用维度（G1-G6）和分项维度（S1-S4/S5）的所有条款，两套独立评分，不得合并或省略任一维度。
+7. `clause_scores` 必须同时包含通用维度（G1-G6）和分项维度（S1-S4/S5）的所有条款，两套独立评分，不得合并或省略任一维度。
 
 ### TCI 四级修正规则（代码层强制执行）
 - TCI ≥ 80：类型一致，无修正
