@@ -125,6 +125,50 @@ class ScoringConsistencyTests(unittest.TestCase):
         self.assertIn("| **最终结论** | **不合格** | — |", synced)
         self.assertNotIn("**及格**", synced)
 
+    def test_report_markdown_replaces_score_overview_variants_and_tail_summary(self):
+        markdown = """# 报告
+
+## 一、基本信息
+
+| 项目 | 内容 |
+|------|------|
+| 总分（调整后） | **62 / 100** |
+| 结论 | **及格** |
+
+## 二、评分概览
+
+| 维度 | 满分 | 得分 |
+|------|------|------|
+| 通用维度（G1-G6） | 45 | 30 |
+| 分项维度 | 55 | 35 |
+| Buffer 扣分（黄色） | - | -3 |
+| **调整后总分 (adjusted_score)** | **62** | **100** |
+
+## 三、类型一致性指数（TCI）
+
+| **TCI 总分** | **90/100** | **高度一致** |
+
+## 七、结论
+
+经调整后总分为62分，结论为**及格**。
+"""
+        summary = {
+            "score_general": 30,
+            "score_specific": 35,
+            "score_total": 65,
+            "adjusted_score": 60,
+            "buffer_deduction": 5,
+            "conclusion": "及格",
+        }
+
+        synced = sync_report_markdown(markdown, summary, {"tci_deduction": 0, "ceiling": 100})
+
+        self.assertIn("| 总分（调整后） | **60 / 100** |", synced)
+        self.assertIn("| **调整后总分 (adjusted_score)** | **60** | **100** |", synced)
+        self.assertIn("经调整后总分为60分，结论为**及格**。", synced)
+        self.assertNotIn("62", synced)
+        self.assertNotIn("Buffer 扣分（黄色）", synced)
+
 
 if __name__ == "__main__":
     unittest.main()

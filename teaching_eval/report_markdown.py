@@ -64,7 +64,11 @@ def _sync_table_score_row(line: str, summary: Dict[str, Any], scoring: Dict[str,
         return _format_table_row(cells, "TCI 修正扣分", _deduction(scoring.get("tci_deduction", 0)), "—")
     if label_text.startswith("调整后总分"):
         return _format_table_row(cells, "**调整后总分 (adjusted_score)**", f"**{adjusted_score}**", "**100**")
-    if label_text in {"最终结论", "评分结论"}:
+    if label_text in {"总分（调整后）", "总分(调整后)", "调整分"}:
+        if len(cells) <= 2:
+            return f"| 总分（调整后） | **{adjusted_score} / 100** |"
+        return _format_table_row(cells, "总分（调整后）", f"**{adjusted_score}**", "**100**")
+    if label_text in {"最终结论", "评分结论", "结论"}:
         return _format_table_row(cells, "**最终结论**", f"**{conclusion}**", "—" if len(cells) > 2 else None)
     return line
 
@@ -109,7 +113,7 @@ def sync_report_markdown(markdown: str, summary: Dict[str, Any], scoring: Dict[s
     markdown = markdown or ""
     overview = build_score_overview(summary, scoring)
     section_pattern = re.compile(
-        r"^## 二、评分总览\s*\n.*?(?=^## 三[、.．]|\Z)",
+        r"^## 二、评分(?:总览|概览)\s*\n.*?(?=^## 三[、.．]|\Z)",
         flags=re.MULTILINE | re.DOTALL,
     )
     if section_pattern.search(markdown):
@@ -140,13 +144,28 @@ def sync_report_markdown(markdown: str, summary: Dict[str, Any], scoring: Dict[s
         synced,
     )
     synced = re.sub(
-        r"(?m)^(\|\s*\*{0,2}(?:最终结论|评分结论)\*{0,2}\s*\|\s*)\*{0,2}[^|\n]*?\*{0,2}(\s*\|.*)$",
+        r"(?m)^(\|\s*\*{0,2}(?:最终结论|评分结论|结论)\*{0,2}\s*\|\s*)\*{0,2}[^|\n]*?\*{0,2}(\s*\|.*)$",
         rf"\g<1>**{summary.get('conclusion') or '不合格'}**\g<2>",
         synced,
     )
     synced = re.sub(
         r"(?m)^\|.*\|$",
         lambda match: _sync_table_score_row(match.group(0), summary, scoring or {}),
+        synced,
+    )
+    synced = re.sub(
+        r"经调整后总分为\s*\d+(?:\.\d+)?\s*分",
+        f"经调整后总分为{_display_number(summary.get('adjusted_score'))}分",
+        synced,
+    )
+    synced = re.sub(
+        r"调整后总分为\s*\d+(?:\.\d+)?\s*分",
+        f"调整后总分为{_display_number(summary.get('adjusted_score'))}分",
+        synced,
+    )
+    synced = re.sub(
+        r"结论为\*{0,2}(优秀|良好|中等|及格|不合格|不及格)\*{0,2}",
+        f"结论为**{summary.get('conclusion') or '不合格'}**",
         synced,
     )
     return synced
