@@ -53,7 +53,7 @@ new Chart(document.getElementById('issueCategoryChart'), {
   type: 'doughnut',
   data: {
     labels: issueDistribution.map(x => x.issue_category),
-    datasets: [{ data: issueDistribution.map(x => x.cnt), backgroundColor: ['#3e95cd','#8e5ea2','#3cba9f','#e8c3b9','#c45850'] }]
+    datasets: [{ data: issueDistribution.map(x => x.cnt), backgroundColor: ['#2563eb','#0f766e','#6750a4','#a16207','#c2413a'] }]
   },
   options: { responsive: true, maintainAspectRatio: false }
 });
@@ -63,7 +63,7 @@ new Chart(document.getElementById('typeDistributionChart'), {
   type: 'bar',
   data: {
     labels: typeDistribution.map(x => x.doc_type),
-    datasets: [{ label: '数量', data: typeDistribution.map(x => x.cnt), backgroundColor: '#3e95cd' }]
+    datasets: [{ label: '数量', data: typeDistribution.map(x => x.cnt), backgroundColor: '#2563eb', borderRadius: 5 }]
   },
   options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } } }
 });

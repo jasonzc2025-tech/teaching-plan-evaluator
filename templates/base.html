@@ -12,6 +12,23 @@
   <!-- Chart.js 国内 CDN，备用 jsdelivr -->
   <script src="https://cdn.bootcdn.net/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"
           onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js';"></script>
+  <script>
+    (function () {
+      function applyChartDefaults() {
+        if (!window.Chart) return;
+        Chart.defaults.font.family = "'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif";
+        Chart.defaults.color = '#667085';
+        Chart.defaults.borderColor = '#d8e1ec';
+        Chart.defaults.plugins.legend.labels.usePointStyle = true;
+        Chart.defaults.plugins.legend.labels.boxWidth = 8;
+        Chart.defaults.plugins.tooltip.backgroundColor = 'rgba(23,32,51,0.92)';
+        Chart.defaults.plugins.tooltip.padding = 10;
+        Chart.defaults.plugins.tooltip.cornerRadius = 6;
+      }
+      applyChartDefaults();
+      window.addEventListener('load', applyChartDefaults);
+    })();
+  </script>
 </head>
 <body>
   {% block body %}{% endblock %}

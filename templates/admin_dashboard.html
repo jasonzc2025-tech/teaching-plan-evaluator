@@ -344,12 +344,12 @@ function initCharts() {
       datasets: [
         {
           type: 'bar', label: '评审量', data: daily.map(x => x.cnt), yAxisID: 'y',
-          backgroundColor: 'rgba(37,99,235,0.2)', borderColor: 'rgba(37,99,235,0.7)',
+          backgroundColor: 'rgba(37,99,235,0.18)', borderColor: 'rgba(37,99,235,0.72)',
           borderWidth: 1.5, borderRadius: 5,
         },
         {
           type: 'line', label: '平均分', data: daily.map(x => x.avg_score), yAxisID: 'y1',
-          borderColor: '#0d7a5f', backgroundColor: 'transparent',
+          borderColor: '#0f766e', backgroundColor: 'transparent',
           pointRadius: 4, tension: 0.3, borderWidth: 2,
         }
       ]
@@ -358,14 +358,14 @@ function initCharts() {
       responsive: true, maintainAspectRatio: false, animation: { duration: 400 },
       plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, padding: 14 } } },
       scales: {
-        y: { beginAtZero: true, grid: { color: '#dce6f5' } },
+        y: { beginAtZero: true, grid: { color: '#d8e1ec' } },
         y1: { beginAtZero: true, max: 100, position: 'right', grid: { drawOnChartArea: false } }
       }
     }
   });
 
   const severity = {{ severity_counts|tojson }};
-  const COLORS = { fatal:'#c0392b', major:'#e67e22', minor:'#f1c40f', note:'#3498db' };
+  const COLORS = { fatal:'#c2413a', major:'#a16207', minor:'#eab308', note:'#2563eb' };
   new Chart(document.getElementById('severityChart'), {
     type: 'doughnut',
     data: {

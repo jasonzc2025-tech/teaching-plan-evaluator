@@ -71,8 +71,11 @@ new Chart(document.getElementById('teacherTrendChart'), {
     datasets: [{
       label: '平均总分',
       data: teacherTrend.map(x => x.avg_score || 0),
-      borderColor: '#3e95cd',
+      borderColor: '#0f766e',
+      backgroundColor: 'rgba(15,118,110,0.08)',
       fill: false,
+      tension: 0.32,
+      pointRadius: 4,
     }]
   },
   options: {
