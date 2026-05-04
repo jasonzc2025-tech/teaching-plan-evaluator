@@ -17,7 +17,8 @@
   <section class="kpi-grid wide">
     <div class="kpi"><span>申报类型</span><strong>{{ record.declared_type or '-' }}</strong></div>
     <div class="kpi"><span>实质类型</span><strong>{{ record.actual_type or '-' }}</strong></div>
-    <div class="kpi"><span>总分</span><strong>{{ record.score_total or '-' }}</strong></div>
+    <div class="kpi"><span>原始总分</span><strong>{{ record.score_total or '-' }}</strong></div>
+    <div class="kpi"><span>调整后</span><strong>{{ record.adjusted_score or record.score_total or '-' }}</strong></div>
     <div class="kpi"><span>结论</span><strong>{{ record.conclusion or '-' }}</strong></div>
     <div class="kpi"><span>问题数</span><strong>{{ record.issue_count or 0 }}</strong></div>
     <div class="kpi"><span>major 问题</span><strong>{{ record.major_count or 0 }}</strong></div>

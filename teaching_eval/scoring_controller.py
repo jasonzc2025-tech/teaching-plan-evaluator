@@ -219,6 +219,36 @@ def apply_clause_score_guards(
     }
 
 
+def _sum_clause_dimension(clause_scores: List[Dict[str, Any]], predicate) -> float:
+    return sum(
+        _safe_number(item.get("actual_score"))
+        for item in clause_scores
+        if isinstance(item, dict) and predicate(item.get("clause_code", ""))
+    )
+
+
+def _has_complete_clause_scores(clause_scores: List[Dict[str, Any]]) -> bool:
+    """
+    Treat clause scores as authoritative only when the report contains a full
+    rubric shape. Some unit tests and guard callers pass a single clause to
+    exercise a cap; those partial inputs still need the summary fallback.
+    """
+    general_count = sum(
+        1 for item in clause_scores
+        if isinstance(item, dict) and _is_general_clause(item.get("clause_code", ""))
+    )
+    specific_count = sum(
+        1 for item in clause_scores
+        if isinstance(item, dict) and _is_specific_clause(item.get("clause_code", ""))
+    )
+    return general_count >= 6 and specific_count >= 4
+
+
+CLAUSE_SCORE_FALLBACK_FLAG = (
+    "条款评分明细不完整，系统已暂用汇总分完成软处理；建议重新评审。"
+)
+
+
 # ──────────────────────────────────────────────
 # Buffer（风险缓冲）计算规则
 # ──────────────────────────────────────────────
@@ -227,8 +257,8 @@ def compute_buffer(issues: List[Dict[str, Any]]) -> Dict[str, Any]:
     """
     根据 issues 严重程度计算 buffer_level 和 buffer_deduction。
     """
-    fatal = sum(1 for i in issues if isinstance(i, dict) and i.get("severity") == "fatal")
-    major = sum(1 for i in issues if isinstance(i, dict) and i.get("severity") == "major")
+    fatal = sum(1 for i in issues if isinstance(i, dict) and _norm(i.get("severity")) == "fatal")
+    major = sum(1 for i in issues if isinstance(i, dict) and _norm(i.get("severity")) == "major")
 
     if fatal > 0:
         return {"buffer_level": "红色", "buffer_deduction": 10}
@@ -365,9 +395,9 @@ def apply_scoring_rules(
 
     返回:
         {
-            'score_general': int,    # = LLM 原始值
-            'score_specific': int,   # = LLM 原始值
-            'score_total': int,      # = LLM 原始值
+            'score_general': int,    # 完整条款分优先，否则回退 LLM summary
+            'score_specific': int,   # 完整条款分优先，否则回退 LLM summary
+            'score_total': int,      # score_general + score_specific
             'adjusted_score': int,   # 经代码层修正后
             'buffer_level': str,
             'buffer_deduction': int,
@@ -381,15 +411,23 @@ def apply_scoring_rules(
     issues = issues or []
     clause_scores = clause_scores or []
 
-    score_general = _clamp(llm_score_general, 0, 45)
-    score_specific = _clamp(llm_score_specific, 0, 55)
-    provided_total = _clamp(llm_score_total, 0, 100)
-
     clause_guard = apply_clause_score_guards(clause_scores, issues)
-    if clause_guard["flags"]:
-        score_general = max(0, score_general - clause_guard["general_delta"])
-        score_specific = max(0, score_specific - clause_guard["specific_delta"])
-        provided_total = max(0, provided_total - clause_guard["general_delta"] - clause_guard["specific_delta"])
+    guarded_clause_scores = clause_guard["clause_scores"]
+    review_flags = list(clause_guard["flags"])
+
+    if _has_complete_clause_scores(guarded_clause_scores):
+        score_general = min(_sum_clause_dimension(guarded_clause_scores, _is_general_clause), 45)
+        score_specific = min(_sum_clause_dimension(guarded_clause_scores, _is_specific_clause), 55)
+        provided_total = min(score_general + score_specific, 100)
+    else:
+        score_general = _clamp(llm_score_general, 0, 45)
+        score_specific = _clamp(llm_score_specific, 0, 55)
+        provided_total = _clamp(llm_score_total, 0, 100)
+        if clause_guard["flags"]:
+            score_general = max(0, score_general - clause_guard["general_delta"])
+            score_specific = max(0, score_specific - clause_guard["specific_delta"])
+            provided_total = max(0, provided_total - clause_guard["general_delta"] - clause_guard["specific_delta"])
+        review_flags.append(CLAUSE_SCORE_FALLBACK_FLAG)
 
     if score_general > 0 or score_specific > 0:
         score_total = min(score_general + score_specific, 100)
@@ -417,7 +455,7 @@ def apply_scoring_rules(
     # ── 5. 高分/低分复核 ──
     review_result = apply_score_review_guards(adjusted_score, issues)
     adjusted_score = review_result["adjusted_score"]
-    review_flags = clause_guard["flags"] + review_result["flags"]
+    review_flags.extend(review_result["flags"])
 
     # ── 6. 结论 ──
     if vetoed:

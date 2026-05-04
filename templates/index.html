@@ -23,15 +23,19 @@
 .page-grid{align-items:stretch;}
 .right-col{display:flex;flex-direction:column;}
 .right-card{flex:1;display:flex;flex-direction:column;position:sticky;top:20px;height:calc(100vh - 110px);overflow:hidden;}
-.score-row{display:grid;grid-template-columns:1fr 1fr 1.2fr;gap:10px;padding:14px 22px 10px;flex-shrink:0;}
+.score-row{display:grid;grid-template-columns:1fr 1fr 1.1fr 1.1fr;gap:10px;padding:14px 22px 10px;flex-shrink:0;}
 .sc{background:linear-gradient(180deg,#f1f7ff,#eef8f5);border:1px solid rgba(29,95,215,0.1);border-radius:var(--radius);padding:11px 8px;text-align:center;}
 .sc.total{background:linear-gradient(135deg,var(--blue-mid),var(--teal));border-color:transparent;box-shadow:0 10px 20px rgba(37,99,235,0.18);}
+.sc.adjusted{background:linear-gradient(135deg,#0f766e,#22c55e);border-color:transparent;box-shadow:0 10px 20px rgba(15,118,110,0.16);}
 .sc-label{font-size:10px;color:var(--muted);margin-bottom:2px;}
 .sc.total .sc-label{color:rgba(255,255,255,0.75);}
+.sc.adjusted .sc-label{color:rgba(255,255,255,0.75);}
 .sc-value{font-size:22px;font-weight:700;color:var(--blue-mid);line-height:1.1;min-height:26px;display:flex;align-items:center;justify-content:center;}
 .sc.total .sc-value{color:#fff;}
+.sc.adjusted .sc-value{color:#fff;}
 .sc-max{font-size:10px;color:var(--muted);margin-top:1px;}
 .sc.total .sc-max{color:rgba(255,255,255,0.6);}
+.sc.adjusted .sc-max{color:rgba(255,255,255,0.65);}
 .conclusion-row{margin:0 22px 10px;flex-shrink:0;border-radius:var(--radius-sm);padding:8px 12px;font-size:13px;font-weight:500;display:flex;align-items:center;gap:8px;background:var(--amber-light);color:var(--amber);border:1px solid #f1c75c;}
 .conclusion-row.excellent{background:#f0fdf4;color:#15803d;border-color:#86efac;}
 .conclusion-row.good{background:var(--blue-light);color:var(--blue-mid);border-color:#93c5fd;}
@@ -41,6 +45,8 @@
 .conclusion-row.veto{background:var(--red-light);color:var(--red);border-color:#fca5a5;}
 .stream-bar{display:none;margin:0 22px 10px;align-items:center;gap:8px;padding:8px 12px;background:#eef7ff;border:1px solid rgba(37,99,235,0.12);border-radius:var(--radius-sm);font-size:12px;color:var(--blue-mid);flex-shrink:0;}
 .stream-bar.show{display:flex;}
+.review-warning{display:none;margin:0 22px 10px;padding:8px 12px;border:1px solid #fca5a5;border-radius:var(--radius-sm);background:var(--red-light);color:var(--red);font-size:12px;font-weight:700;line-height:1.5;flex-shrink:0;}
+.review-warning.show{display:block;}
 .right-body{flex:1;overflow-y:auto;overflow-x:auto;padding:0 22px 16px;min-height:0;}
 .empty-state{border:1.5px dashed #cbd7e5;border-radius:var(--radius);background:linear-gradient(180deg,#fbfdff,#f6f9fc);display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;min-height:160px;color:var(--muted);text-align:center;gap:8px;}
 .issue-anim{opacity:0;transform:translateY(6px);transition:opacity 0.3s ease,transform 0.3s ease;}
@@ -96,7 +102,7 @@
 }
 @media (max-width:600px){
   .score-row{grid-template-columns:1fr;gap:8px;padding:12px 16px 8px;}
-  .conclusion-row,.stream-bar{margin-left:16px;margin-right:16px;}
+  .conclusion-row,.stream-bar,.review-warning{margin-left:16px;margin-right:16px;}
   .right-body{padding:0 16px 14px;}
   .guide-head,.copy-bar{align-items:stretch;flex-direction:column;}
 }
@@ -199,7 +205,8 @@
       <div class="score-row">
         <div class="sc"><div class="sc-label">通用维度</div><div class="sc-value" id="val-general"></div><div class="sc-max">/45</div></div>
         <div class="sc"><div class="sc-label">分项维度</div><div class="sc-value" id="val-specific"></div><div class="sc-max">/55</div></div>
-        <div class="sc total"><div class="sc-label">总分</div><div class="sc-value" id="val-total"></div><div class="sc-max">/100</div></div>
+        <div class="sc total"><div class="sc-label">原始总分</div><div class="sc-value" id="val-total"></div><div class="sc-max">扣分前 /100</div></div>
+        <div class="sc adjusted"><div class="sc-label">调整后</div><div class="sc-value" id="val-adjusted"></div><div class="sc-max">判等用 /100</div></div>
       </div>
       <div class="conclusion-row" id="conclusion-banner">
         <span>⏳</span><span>等待评审，上传教案后点击「开始分析」</span>
@@ -209,6 +216,7 @@
         <span id="stream-status">正在分析中，请稍候…</span>
         <span style="margin-left:auto;font-size:11px;color:var(--muted);" id="stream-timer"></span>
       </div>
+      <div class="review-warning" id="review-warning"></div>
       <div class="right-body" id="right-body">
         <div class="empty-state" id="placeholder">
           <div style="font-size:32px;opacity:0.25;">🗒️</div>
@@ -374,6 +382,21 @@ function setConclusionBanner(cls,icon,text){
   var cb=document.getElementById('conclusion-banner');
   cb.className='conclusion-row '+cls;
   cb.innerHTML='<span>'+icon+'</span><span>'+text+'</span>';
+}
+
+function renderReviewFlags(flags){
+  var box=document.getElementById('review-warning');
+  if(!box)return;
+  var warnings=(flags||[]).filter(function(flag){
+    return String(flag||'').indexOf('条款评分明细不完整')!==-1;
+  });
+  if(!warnings.length){
+    box.classList.remove('show');
+    box.textContent='';
+    return;
+  }
+  box.textContent='红色提示：'+warnings.join(' ');
+  box.classList.add('show');
 }
 
 function toggleMd(){
@@ -586,9 +609,11 @@ function updateScoreFromData(summary){
   var g=summary.score_general!=null?summary.score_general:'';
   var s=summary.score_specific!=null?summary.score_specific:'';
   var t=summary.score_total!=null?summary.score_total:'';
+  var a=summary.adjusted_score!=null?summary.adjusted_score:t;
   document.getElementById('val-general').textContent=g;
   document.getElementById('val-specific').textContent=s;
   document.getElementById('val-total').textContent=t;
+  document.getElementById('val-adjusted').textContent=a;
   document.getElementById('result-type-badge').textContent=summary.actual_type||summary.declared_type||'';
   var veto=summary.vetoed;
   var con=summary.conclusion||'';
@@ -643,8 +668,9 @@ async function submitEval(){
   document.getElementById('result-panel').style.display='none';
   document.getElementById('stream-bar').classList.add('show');
   document.getElementById('stream-status').textContent='正在连接分析引擎…';
-  ['val-general','val-specific','val-total'].forEach(function(id){document.getElementById(id).textContent='';});
+  ['val-general','val-specific','val-total','val-adjusted'].forEach(function(id){document.getElementById(id).textContent='';});
   setConclusionBanner('','⏳','正在评审中，请稍候…');
+  renderReviewFlags([]);
   lastMarkdown='';
   lastPriorityText='';
   document.getElementById('priority-list').innerHTML='';
@@ -764,6 +790,7 @@ function renderFinalResult(data){
   var summary=data.summary||{};
   updateDocumentMetadata(data);
   updateScoreFromData(summary);
+  renderReviewFlags(data.review_flags||[]);
   // 用adjusted_score重算等第，不依赖LLM的conclusion
   var adj=summary.adjusted_score!=null?Number(summary.adjusted_score):Number(summary.score_total||0);
   var veto=summary.vetoed;

@@ -58,7 +58,10 @@ def _sync_table_score_row(line: str, summary: Dict[str, Any], scoring: Dict[str,
         return _format_table_row(cells, "分项维度", _display_number(summary.get("score_specific")), "55")
     if label_text in {"总分", "本体总分", "总分 (score_total)", "score_total"}:
         return _format_table_row(cells, "**总分 (score_total)**", f"**{score_total}**", "**100**")
-    if label_text.startswith("Buffer 风险扣分") or label_text.startswith("Buffer风险扣分"):
+    if (
+        (label_text.startswith("Buffer") and "扣分" in label_text)
+        or ("缓冲" in label_text and "扣分" in label_text)
+    ):
         return _format_table_row(cells, "Buffer 风险扣分", _deduction(summary.get("buffer_deduction")), "—")
     if label_text.startswith("TCI 修正扣分") or label_text.startswith("TCI修正扣分"):
         return _format_table_row(cells, "TCI 修正扣分", _deduction(scoring.get("tci_deduction", 0)), "—")
@@ -100,7 +103,41 @@ def build_score_overview(summary: Dict[str, Any], scoring: Dict[str, Any] = None
         f"| **调整后总分 (adjusted_score)** | **{_display_number(summary.get('adjusted_score'))}** | **100** |",
         f"| **最终结论** | **{summary.get('conclusion') or '不合格'}** | — |",
     ])
+    fallback_warning = _clause_score_fallback_warning(scoring)
+    if fallback_warning:
+        rows.extend([
+            "",
+            f'<p style="color:#c2413a;font-weight:700;">【红色提示】{fallback_warning}</p>',
+        ])
     return "\n".join(rows)
+
+
+def _clause_score_fallback_warning(scoring: Dict[str, Any]) -> str:
+    for flag in scoring.get("review_flags", []) or []:
+        text = str(flag or "").strip()
+        if "条款评分明细不完整" in text:
+            return text
+    return ""
+
+
+def _remove_score_overview_sections(markdown: str) -> str:
+    score_section_pattern = re.compile(
+        r"^##\s*(?:[一二三四五六七八九十]+[、.．]\s*|\d+[、.．]\s*)?评分(?:总览|概览)\s*\n.*?(?=^#{1,2}\s+|\Z)",
+        flags=re.MULTILINE | re.DOTALL,
+    )
+    return score_section_pattern.sub("", markdown or "").strip()
+
+
+def _insert_score_overview(markdown: str, overview: str) -> str:
+    insert_pattern = re.compile(
+        r"(^##\s*(?:一[、.．]\s*|1[、.．]\s*)?基本信息\s*\n.*?)(?=^##\s+|\Z)",
+        flags=re.MULTILINE | re.DOTALL,
+    )
+    if insert_pattern.search(markdown):
+        return insert_pattern.sub(r"\1" + overview + "\n\n", markdown, count=1)
+    if markdown:
+        return overview + "\n\n" + markdown
+    return overview
 
 
 def sync_report_markdown(markdown: str, summary: Dict[str, Any], scoring: Dict[str, Any] = None) -> str:
@@ -112,21 +149,7 @@ def sync_report_markdown(markdown: str, summary: Dict[str, Any], scoring: Dict[s
     """
     markdown = markdown or ""
     overview = build_score_overview(summary, scoring)
-    section_pattern = re.compile(
-        r"^## 二、评分(?:总览|概览)\s*\n.*?(?=^## 三[、.．]|\Z)",
-        flags=re.MULTILINE | re.DOTALL,
-    )
-    if section_pattern.search(markdown):
-        synced = section_pattern.sub(overview + "\n\n", markdown, count=1)
-    else:
-        insert_pattern = re.compile(
-            r"(^## 一、基本信息\s*\n.*?)(?=^## [二三][、.．]|\Z)",
-            flags=re.MULTILINE | re.DOTALL,
-        )
-        if insert_pattern.search(markdown):
-            synced = insert_pattern.sub(r"\1" + overview + "\n\n", markdown, count=1)
-        else:
-            synced = overview + "\n\n" + markdown
+    synced = _insert_score_overview(_remove_score_overview_sections(markdown), overview)
 
     synced = re.sub(
         r"(?m)^(\s*[-*]\s*得分\s*[：:]\s*)\d+(?:\.\d+)?\s*$",

@@ -36,6 +36,48 @@ class ScoringConsistencyTests(unittest.TestCase):
         self.assertEqual(result["score_total"], 67)
         self.assertEqual(result["adjusted_score"], 67)
 
+    def test_incomplete_clause_scores_soft_fallback_is_flagged(self):
+        result = apply_scoring_rules(
+            llm_score_general=30,
+            llm_score_specific=37,
+            llm_score_total=67,
+            clause_scores=[
+                {"clause_code": "G1", "max_score": 4, "actual_score": 4},
+            ],
+        )
+
+        self.assertEqual(result["score_total"], 67)
+        self.assertTrue(any("条款评分明细不完整" in flag for flag in result["review_flags"]))
+
+    def test_complete_clause_scores_are_authoritative_for_totals(self):
+        clause_scores = [
+            {"clause_code": "G1", "max_score": 4, "actual_score": 4},
+            {"clause_code": "G2", "max_score": 10, "actual_score": 5},
+            {"clause_code": "G3", "max_score": 10, "actual_score": 9},
+            {"clause_code": "G4", "max_score": 11, "actual_score": 10},
+            {"clause_code": "G5", "max_score": 6, "actual_score": 5},
+            {"clause_code": "G6", "max_score": 4, "actual_score": 4},
+            {"clause_code": "S1", "max_score": 15, "actual_score": 14},
+            {"clause_code": "S2", "max_score": 10, "actual_score": 9},
+            {"clause_code": "S3", "max_score": 10, "actual_score": 8},
+            {"clause_code": "S4", "max_score": 10, "actual_score": 9},
+            {"clause_code": "S5", "max_score": 10, "actual_score": 2},
+        ]
+        result = apply_scoring_rules(
+            llm_score_general=38,
+            llm_score_specific=42,
+            llm_score_total=80,
+            clause_scores=clause_scores,
+            issues=[{"severity": "major"}, {"severity": "major"}],
+            tci={"total": 90, "consistency_level": "高度一致"},
+        )
+
+        self.assertEqual(result["score_general"], 37)
+        self.assertEqual(result["score_specific"], 42)
+        self.assertEqual(result["score_total"], 79)
+        self.assertEqual(result["buffer_deduction"], 3)
+        self.assertEqual(result["adjusted_score"], 76)
+
     def test_missing_tci_does_not_lock_score_to_55(self):
         result = apply_scoring_rules(
             llm_score_general=40,
@@ -253,6 +295,72 @@ class ScoringConsistencyTests(unittest.TestCase):
         self.assertIn("经调整后总分为60分，结论为**及格**。", synced)
         self.assertNotIn("62", synced)
         self.assertNotIn("Buffer 扣分（黄色）", synced)
+
+    def test_report_markdown_removes_duplicate_llm_score_overview(self):
+        markdown = """# 报告
+
+## 1. 基本信息
+
+| 项目 | 内容 |
+|------|------|
+| 课程内容 | 测试 |
+
+## 2. 评分总览
+
+| 维度 | 得分 | 满分 |
+|------|------|------|
+| **总分 (score_total)** | **75** | **100** |
+| 风险缓冲扣分 | -3 | - |
+| **调整后总分 (adjusted_score)** | **72** | **100** |
+
+## 3. 条款详情
+
+| 条款 | 得分 |
+|------|------|
+| G1 | 4 |
+"""
+        summary = {
+            "score_general": 35,
+            "score_specific": 40,
+            "score_total": 75,
+            "adjusted_score": 70,
+            "buffer_deduction": 5,
+            "conclusion": "中等",
+        }
+
+        synced = sync_report_markdown(markdown, summary, {"tci_deduction": 0, "ceiling": 100})
+
+        self.assertEqual(synced.count("评分总览"), 1)
+        self.assertIn("| Buffer 风险扣分 | -5 | — |", synced)
+        self.assertIn("| **调整后总分 (adjusted_score)** | **70** | **100** |", synced)
+        self.assertNotIn("风险缓冲扣分 | -3", synced)
+        self.assertNotIn("**72**", synced)
+
+    def test_report_markdown_shows_red_fallback_warning(self):
+        markdown = """# 报告
+
+## 一、基本信息
+
+| 项目 | 内容 |
+|------|------|
+| 课程内容 | 测试 |
+"""
+        summary = {
+            "score_general": 30,
+            "score_specific": 37,
+            "score_total": 67,
+            "adjusted_score": 67,
+            "buffer_deduction": 0,
+            "conclusion": "及格",
+        }
+        synced = sync_report_markdown(markdown, summary, {
+            "tci_deduction": 0,
+            "ceiling": 100,
+            "review_flags": ["条款评分明细不完整，系统已暂用汇总分完成软处理；建议重新评审。"],
+        })
+
+        self.assertIn('style="color:#c2413a;font-weight:700;"', synced)
+        self.assertIn("建议重新评审", synced)
 
 
 if __name__ == "__main__":
