@@ -1,6 +1,7 @@
 import json
 
 from flask import Blueprint, Response, current_app, jsonify, render_template, request
+from werkzeug.exceptions import RequestEntityTooLarge
 
 from .activity_guides import get_activity_guide
 from .llm_client import LLMClient
@@ -48,8 +49,11 @@ def precheck():
             current_app.config["ALLOWED_EXTENSIONS"],
             current_app.config["MIN_TEXT_LENGTH"],
             current_app.config["MAX_TEXT_LENGTH"],
+            current_app.config["MAX_CONTENT_LENGTH"],
         )
         return jsonify(run_precheck(text_content, metadata))
+    except RequestEntityTooLarge as exc:
+        return jsonify({"error": exc.description}), 413
     except Exception as exc:
         return jsonify({"error": f"提交前自查失败: {exc}"}), 400
 
@@ -72,6 +76,7 @@ def evaluate():
             current_app.config["ALLOWED_EXTENSIONS"],
             current_app.config["MIN_TEXT_LENGTH"],
             current_app.config["MAX_TEXT_LENGTH"],
+            current_app.config["MAX_CONTENT_LENGTH"],
         )
         from .services import evaluate_text
         result = evaluate_text(current_app.config, text_content, metadata)
@@ -94,11 +99,14 @@ def evaluate():
             },
             "issues": result["issues"],
             "clause_scores": result["clause_scores"],
+            "review_flags": result.get("review_flags", []),
             "strengths": result["strengths"],
             "suggestions": result["suggestions"],
             "char_count": result["char_count"],
             "duration_sec": result["duration_sec"],
         })
+    except RequestEntityTooLarge as exc:
+        return jsonify({"error": exc.description}), 413
     except Exception as exc:
         return jsonify({"error": f"分析失败: {exc}"}), 400
 
@@ -116,7 +124,14 @@ def evaluate_stream():
             current_app.config["ALLOWED_EXTENSIONS"],
             current_app.config["MIN_TEXT_LENGTH"],
             current_app.config["MAX_TEXT_LENGTH"],
+            current_app.config["MAX_CONTENT_LENGTH"],
         )
+    except RequestEntityTooLarge as exc:
+        def err_gen():
+            yield f"data: {json.dumps({'error': exc.description}, ensure_ascii=False)}\n\n"
+        return Response(err_gen(), mimetype="text/event-stream",
+                        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+                        status=413)
     except Exception as exc:
         def err_gen():
             yield f"data: {json.dumps({'error': str(exc)}, ensure_ascii=False)}\n\n"
@@ -167,6 +182,7 @@ def evaluate_stream():
                 llm_adjusted_score=summary.get("adjusted_score", summary.get("score_total", 0)),
                 tci=structured.get("tci", {}),
                 issues=structured.get("issues", []),
+                clause_scores=structured.get("clause_scores", []),
                 vetoed=summary.get("vetoed", False),
                 buffer_level=summary.get("buffer_level", "无"),
                 buffer_deduction=summary.get("buffer_deduction", 0),
@@ -180,6 +196,10 @@ def evaluate_stream():
             summary["buffer_deduction"] = scoring_result["buffer_deduction"]
             summary["vetoed"] = scoring_result["vetoed"]
             summary["conclusion"] = scoring_result["conclusion"]
+            structured["clause_scores"] = scoring_result.get("clause_scores", structured["clause_scores"])
+            structured["review_flags"] = scoring_result.get("review_flags", [])
+            if structured["review_flags"]:
+                structured["check_log"] = structured.get("check_log", []) + structured["review_flags"]
             markdown = sync_report_markdown(markdown, summary, scoring_result)
 
 
@@ -210,6 +230,7 @@ def evaluate_stream():
                 "obj_measurability": (objective_matrix.get("measurability") or {}).get("score", 0),
                 "obj_alignment": (objective_matrix.get("alignment") or {}).get("score", 0),
                 "check_log": structured.get("check_log", []),
+                "review_flags": structured.get("review_flags", []),
                 "char_count": len(text_content),
                 "duration_sec": duration,
                 "issue_count": len(structured["issues"]),
@@ -247,6 +268,7 @@ def evaluate_stream():
                 },
                 "issues": structured["issues"],
                 "clause_scores": structured["clause_scores"],
+                "review_flags": structured.get("review_flags", []),
                 "strengths": structured["strengths"],
                 "suggestions": structured["suggestions"],
                 "duration_sec": duration,

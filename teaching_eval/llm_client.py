@@ -1,7 +1,21 @@
 import json
+import time
 from typing import Dict
 
 import requests
+
+
+RETRY_DELAYS = (1, 2, 4)
+
+
+def _is_retryable_error(exc: Exception) -> bool:
+    if isinstance(exc, (requests.Timeout, requests.ConnectionError)):
+        return True
+    if isinstance(exc, requests.HTTPError):
+        response = exc.response
+        status_code = response.status_code if response is not None else 0
+        return status_code == 429 or status_code >= 500
+    return False
 
 
 class LLMClient:
@@ -28,15 +42,21 @@ class LLMClient:
             "temperature": 0.1,
             "stream": False,
         }
-        response = requests.post(
-            self.api_base,
-            headers=headers,
-            json=payload,
-            timeout=timeout,
-        )
-        response.raise_for_status()
-        data = response.json()
-        return data["choices"][0]["message"]["content"]
+        for attempt in range(len(RETRY_DELAYS) + 1):
+            try:
+                response = requests.post(
+                    self.api_base,
+                    headers=headers,
+                    json=payload,
+                    timeout=timeout,
+                )
+                response.raise_for_status()
+                data = response.json()
+                return data["choices"][0]["message"]["content"]
+            except Exception as exc:
+                if attempt >= len(RETRY_DELAYS) or not _is_retryable_error(exc):
+                    raise
+                time.sleep(RETRY_DELAYS[attempt])
 
     def stream(self, system_prompt: str, user_content: str, timeout: int = 180):
         if not self.api_key:

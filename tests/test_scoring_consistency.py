@@ -59,6 +59,91 @@ class ScoringConsistencyTests(unittest.TestCase):
         self.assertEqual(result["ceiling"], 100)
         self.assertEqual(result["adjusted_score"], 85)
 
+    def test_ceiling_keyword_requires_severe_issue_context(self):
+        result = apply_scoring_rules(
+            llm_score_general=40,
+            llm_score_specific=45,
+            llm_score_total=85,
+            issues=[{
+                "severity": "minor",
+                "issue_category": "教学目标与内容闭环",
+                "issue_subcategory": "内容表述",
+                "issue_text": "教学内容纯基础理论扎实，可继续强化临床迁移。",
+            }],
+        )
+
+        self.assertEqual(result["ceiling"], 100)
+        self.assertEqual(result["adjusted_score"], 85)
+
+    def test_ceiling_triggers_for_fatal_clinical_deviation(self):
+        result = apply_scoring_rules(
+            llm_score_general=45,
+            llm_score_specific=50,
+            llm_score_total=95,
+            issues=[{
+                "severity": "fatal",
+                "issue_category": "教学内容偏离临床实践",
+                "issue_subcategory": "偏离临床实践",
+                "issue_text": "课程主体为纯基础研究，偏离临床实践。",
+            }],
+        )
+
+        self.assertEqual(result["ceiling"], 55)
+        self.assertEqual(result["adjusted_score"], 55)
+
+    def test_high_score_review_caps_major_or_fatal_issues(self):
+        result = apply_scoring_rules(
+            llm_score_general=45,
+            llm_score_specific=55,
+            llm_score_total=100,
+            issues=[{
+                "severity": "major",
+                "issue_category": "教学评价与反馈",
+                "evidence_position": "教学评价部分",
+                "issue_text": "评价任务缺少可执行标准。",
+            }],
+        )
+
+        self.assertEqual(result["adjusted_score"], 89)
+        self.assertEqual(result["conclusion"], "良好")
+        self.assertTrue(any("高分复核" in flag for flag in result["review_flags"]))
+
+    def test_low_score_review_flags_sparse_evidence_without_changing_score(self):
+        result = apply_scoring_rules(
+            llm_score_general=25,
+            llm_score_specific=30,
+            llm_score_total=55,
+            issues=[],
+        )
+
+        self.assertEqual(result["adjusted_score"], 55)
+        self.assertTrue(any("低分复核" in flag for flag in result["review_flags"]))
+
+    def test_interaction_density_guard_caps_clause_and_recomputes_total(self):
+        result = apply_scoring_rules(
+            llm_score_general=40,
+            llm_score_specific=50,
+            llm_score_total=90,
+            issues=[{
+                "clause_code": "S2",
+                "clause_name": "互动密度",
+                "severity": "major",
+                "issue_category": "教学设计与流程",
+                "issue_subcategory": "仅写加强互动无具体设计",
+                "evidence_position": "教学过程部分",
+                "issue_text": "仅写加强互动，无具体问题或任务设计。",
+            }],
+            clause_scores=[
+                {"clause_code": "S2", "clause_name": "互动密度", "max_score": 15, "actual_score": 12},
+            ],
+        )
+
+        self.assertEqual(result["clause_scores"][0]["actual_score"], 3)
+        self.assertEqual(result["score_specific"], 41)
+        self.assertEqual(result["score_total"], 81)
+        self.assertEqual(result["adjusted_score"], 78)
+        self.assertTrue(any("互动密度复核" in flag for flag in result["review_flags"]))
+
     def test_report_markdown_score_overview_matches_summary(self):
         markdown = """# 报告
 

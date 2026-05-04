@@ -2,6 +2,8 @@ import json
 import time
 from typing import Dict
 
+from werkzeug.exceptions import RequestEntityTooLarge
+
 from .extractors import allowed_file, extract_text_from_docx, extract_text_from_pdf, normalize_text
 from .llm_client import LLMClient
 from .parser import coerce_result, count_issue_severity, extract_json_and_markdown
@@ -10,10 +12,38 @@ from .report_markdown import sync_report_markdown
 from .scoring_controller import apply_scoring_rules
 
 
-def get_text_content(flask_request, allowed_extensions, min_len, max_len):
+def _format_bytes(size: int) -> str:
+    mb = size / (1024 * 1024)
+    if mb >= 1:
+        return f"{mb:.0f}MB" if mb.is_integer() else f"{mb:.1f}MB"
+    kb = size / 1024
+    return f"{kb:.0f}KB" if kb >= 1 else f"{size}B"
+
+
+def _ensure_size_within_limit(size, max_file_bytes):
+    if not max_file_bytes or not size:
+        return
+    if int(size) > int(max_file_bytes):
+        raise RequestEntityTooLarge(f"上传文件过大，最大支持 {_format_bytes(int(max_file_bytes))}")
+
+
+def _read_uploaded_bytes(uploaded, max_file_bytes):
+    _ensure_size_within_limit(getattr(uploaded, "content_length", None), max_file_bytes)
+    if not max_file_bytes:
+        return uploaded.read()
+
+    file_bytes = uploaded.stream.read(int(max_file_bytes) + 1)
+    if len(file_bytes) > int(max_file_bytes):
+        raise RequestEntityTooLarge(f"上传文件过大，最大支持 {_format_bytes(int(max_file_bytes))}")
+    return file_bytes
+
+
+def get_text_content(flask_request, allowed_extensions, min_len, max_len, max_file_bytes=None):
     text_content = ""
     source_mode = "text"
     filename = ""
+
+    _ensure_size_within_limit(getattr(flask_request, "content_length", None), max_file_bytes)
 
     if "file" in flask_request.files and flask_request.files["file"].filename:
         uploaded = flask_request.files["file"]
@@ -21,7 +51,7 @@ def get_text_content(flask_request, allowed_extensions, min_len, max_len):
         if not allowed_file(filename, allowed_extensions):
             raise ValueError("仅支持 .docx / .pdf / .txt 格式")
         ext = filename.rsplit(".", 1)[1].lower()
-        file_bytes = uploaded.read()
+        file_bytes = _read_uploaded_bytes(uploaded, max_file_bytes)
         if ext == "docx":
             text_content = extract_text_from_docx(file_bytes)
         elif ext == "pdf":
@@ -83,6 +113,7 @@ def evaluate_text(app_config: Dict, text_content: str, metadata: Dict) -> Dict:
         llm_adjusted_score=summary.get("adjusted_score", summary.get("score_total", 0)),
         tci=tci,
         issues=structured.get("issues", []),
+        clause_scores=structured.get("clause_scores", []),
         vetoed=summary.get("vetoed", False),
         buffer_level=summary.get("buffer_level", "无"),
         buffer_deduction=summary.get("buffer_deduction", 0),
@@ -96,6 +127,10 @@ def evaluate_text(app_config: Dict, text_content: str, metadata: Dict) -> Dict:
     summary["buffer_deduction"] = scoring_result["buffer_deduction"]
     summary["vetoed"] = scoring_result["vetoed"]
     summary["conclusion"] = scoring_result["conclusion"]
+    structured["clause_scores"] = scoring_result.get("clause_scores", structured["clause_scores"])
+    structured["review_flags"] = scoring_result.get("review_flags", [])
+    if structured["review_flags"]:
+        structured["check_log"] = structured.get("check_log", []) + structured["review_flags"]
     markdown = sync_report_markdown(markdown, summary, scoring_result)
 
     result = {
@@ -125,6 +160,7 @@ def evaluate_text(app_config: Dict, text_content: str, metadata: Dict) -> Dict:
         "obj_measurability": (objective_matrix.get("measurability") or {}).get("score", 0),
         "obj_alignment": (objective_matrix.get("alignment") or {}).get("score", 0),
         "check_log": structured.get("check_log", []),
+        "review_flags": structured.get("review_flags", []),
         "char_count": len(text_content),
         "duration_sec": round(duration, 1),
         "issue_count": len(structured["issues"]),

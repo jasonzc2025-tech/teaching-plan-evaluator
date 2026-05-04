@@ -20,6 +20,14 @@ def _clamp(value: Any, minimum: float, maximum: float) -> float:
     return max(minimum, min(_safe_number(value), maximum))
 
 
+def _norm(value: Any) -> str:
+    return str(value or "").strip().lower()
+
+
+def _contains_any(text: str, needles: List[str]) -> bool:
+    return any(_norm(needle) and _norm(needle) in text for needle in needles)
+
+
 def _conclusion_from_score(score: float) -> str:
     if score >= 90:
         return "优秀"
@@ -48,20 +56,46 @@ def _is_specific_clause(clause_code: str) -> bool:
 # 上限锁定规则配置
 # ──────────────────────────────────────────────
 
-# 关键词 → 触发的 ceiling 值
-# ⚠️ 必须是精确匹配严重程度，避免误判轻微问题
-CEILING_KEYWORDS = {
-    55: [
-        # 偏离临床实践（致命）
-        "偏离临床实践", "纯基础研究", "纯理论", "纯基础", "有机合成",
-        # 无教学过程/空壳（致命）
-        "空壳教案", "无教学过程", "仅有标题无内容", "教学过程完全缺失",
-    ],
-    65: [
-        # 教学目标完全不可测（严重）
-        "完全不可测", "无任何行为动词", "行为动词完全缺失", "教学目标完全不可观察",
-    ],
-}
+# 上限锁定不直接扫全文，只接受 issues 中已经被 LLM 归类为严重问题的条目。
+# 每条规则同时校验严重程度、问题分类/子类和关键词，避免“纯基础理论扎实”之类的褒义语境误触发。
+CEILING_RULES = [
+    {
+        "limit": 55,
+        "severities": {"fatal"},
+        "categories": ["临床实践", "内容偏离", "教学内容偏离"],
+        "subcategories": ["偏离临床实践", "内容偏离", "纯基础研究"],
+        "keywords": ["偏离临床实践", "纯基础研究", "纯理论", "纯基础", "有机合成"],
+    },
+    {
+        "limit": 55,
+        "severities": {"fatal"},
+        "categories": ["教学设计与流程", "教学过程", "空壳教案"],
+        "subcategories": ["无教学过程", "空壳教案", "教学过程缺失"],
+        "keywords": ["空壳教案", "无教学过程", "仅有标题无内容", "教学过程完全缺失"],
+    },
+    {
+        "limit": 65,
+        "severities": {"major", "fatal"},
+        "categories": ["教学目标", "目标"],
+        "subcategories": ["目标不可测", "行为动词缺失", "不可观察"],
+        "keywords": ["完全不可测", "无任何行为动词", "行为动词完全缺失", "教学目标完全不可观察"],
+    },
+]
+
+
+def _matches_ceiling_rule(issue: Dict[str, Any], rule: Dict[str, Any]) -> bool:
+    severity = _norm(issue.get("severity"))
+    if severity not in rule["severities"]:
+        return False
+
+    cat = _norm(issue.get("issue_category"))
+    sub = _norm(issue.get("issue_subcategory"))
+    text = _norm(issue.get("issue_text"))
+    evidence = f"{sub} {text}"
+
+    if not _contains_any(evidence, rule["keywords"]):
+        return False
+    return _contains_any(cat, rule["categories"]) or _contains_any(sub, rule["subcategories"])
 
 
 def detect_ceiling_from_issues(issues: List[Dict[str, Any]]) -> int:
@@ -73,17 +107,116 @@ def detect_ceiling_from_issues(issues: List[Dict[str, Any]]) -> int:
     for issue in issues:
         if not isinstance(issue, dict):
             continue
-        sub = str(issue.get("issue_subcategory") or "").lower()
-        text = str(issue.get("issue_text") or "").lower()
-        cat = str(issue.get("issue_category") or "").lower()
-        combined = f"{cat} {sub} {text}"
-
-        for limit, keywords in CEILING_KEYWORDS.items():
-            for kw in keywords:
-                if kw in combined:
-                    ceiling = min(ceiling, limit)
-                    break  # 找到即跳出内层，继续下一个 limit
+        for rule in CEILING_RULES:
+            if _matches_ceiling_rule(issue, rule):
+                ceiling = min(ceiling, rule["limit"])
     return ceiling
+
+
+# ──────────────────────────────────────────────
+# 条款分代码层兜底
+# ──────────────────────────────────────────────
+
+def _is_interaction_clause(clause: Dict[str, Any]) -> bool:
+    name = _norm(clause.get("clause_name"))
+    return "互动" in name
+
+
+def _issue_blob(issue: Dict[str, Any]) -> str:
+    return " ".join(
+        _norm(issue.get(key))
+        for key in (
+            "clause_code",
+            "clause_name",
+            "issue_category",
+            "issue_subcategory",
+            "issue_text",
+        )
+    )
+
+
+def _is_interaction_issue(issue: Dict[str, Any]) -> bool:
+    blob = _issue_blob(issue)
+    return "互动" in blob or "提问" in blob or "讨论" in blob
+
+
+def _interaction_cap_from_issue(issue: Dict[str, Any]):
+    blob = _issue_blob(issue)
+    if not _is_interaction_issue(issue):
+        return None
+
+    generic_only = _contains_any(blob, ["仅写", "仅描述", "口号", "口号化", "泛泛"])
+    mentions_interaction = _contains_any(blob, ["互动", "提问", "讨论"])
+    if generic_only and mentions_interaction:
+        return 3
+    if _contains_any(blob, ["无具体互动", "无互动设计", "没有互动", "缺少互动", "无提问", "没有提问"]):
+        return 5
+    if _contains_any(blob, ["无具体问题", "无具体任务", "缺少具体问题", "缺少任务设计"]):
+        return 8
+    if _contains_any(blob, ["互动点<2", "互动点不足", "少于2个互动", "少于两个互动"]):
+        return 11
+    if _contains_any(blob, ["分布不均", "集中在开头", "集中在结尾"]):
+        return 13
+    return None
+
+
+def apply_clause_score_guards(
+    clause_scores: List[Dict[str, Any]],
+    issues: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """
+    对 LLM 条款分做轻量代码兜底。
+
+    当前只强制临床小讲课“互动密度”相关上限；若修正条款分，会返回通用/分项
+    分差，调用方据此同步 score_general / score_specific / score_total。
+    """
+    if not clause_scores:
+        return {
+            "clause_scores": clause_scores or [],
+            "general_delta": 0,
+            "specific_delta": 0,
+            "flags": [],
+        }
+
+    caps = [
+        cap
+        for issue in issues
+        if isinstance(issue, dict)
+        for cap in [_interaction_cap_from_issue(issue)]
+        if cap is not None
+    ]
+    interaction_cap = min(caps) if caps else None
+
+    adjusted = []
+    general_delta = 0.0
+    specific_delta = 0.0
+    flags = []
+
+    for item in clause_scores:
+        if not isinstance(item, dict):
+            continue
+        new_item = dict(item)
+        max_score = _safe_number(new_item.get("max_score"), 100)
+        actual_score = _clamp(new_item.get("actual_score"), 0, max_score)
+        new_item["actual_score"] = actual_score
+
+        if interaction_cap is not None and _is_interaction_clause(new_item) and actual_score > interaction_cap:
+            new_item["actual_score"] = interaction_cap
+            delta = actual_score - interaction_cap
+            if _is_general_clause(new_item.get("clause_code", "")):
+                general_delta += delta
+            else:
+                specific_delta += delta
+            flags.append(f"互动密度复核：{new_item.get('clause_code', '') or '互动条款'} 已封顶至 {interaction_cap} 分")
+
+        adjusted.append(new_item)
+
+    return {
+        "clause_scores": adjusted,
+        "general_delta": general_delta,
+        "specific_delta": specific_delta,
+        "flags": flags,
+    }
 
 
 # ──────────────────────────────────────────────
@@ -104,6 +237,44 @@ def compute_buffer(issues: List[Dict[str, Any]]) -> Dict[str, Any]:
     if major >= 1:
         return {"buffer_level": "黄色", "buffer_deduction": 3}
     return {"buffer_level": "无", "buffer_deduction": 0}
+
+
+# ──────────────────────────────────────────────
+# 高分/低分复核规则
+# ──────────────────────────────────────────────
+
+def _count_severe_issues(issues: List[Dict[str, Any]]) -> Dict[str, int]:
+    fatal = sum(1 for i in issues if isinstance(i, dict) and _norm(i.get("severity")) == "fatal")
+    major = sum(1 for i in issues if isinstance(i, dict) and _norm(i.get("severity")) == "major")
+    return {"fatal": fatal, "major": major}
+
+
+def apply_score_review_guards(adjusted_score: int, issues: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """
+    高分复核直接影响分档；低分复核只做结构化证据质量提示，不自动提分。
+    """
+    flags = []
+    severe_counts = _count_severe_issues(issues)
+
+    if adjusted_score >= 90 and (severe_counts["fatal"] > 0 or severe_counts["major"] > 0):
+        adjusted_score = 89
+        flags.append("高分复核：存在 fatal/major 问题，已封顶至 89 分")
+
+    if adjusted_score < 60:
+        valid_issues = [issue for issue in issues if isinstance(issue, dict)]
+        if not valid_issues:
+            flags.append("低分复核：低分但未输出问题项，建议人工复核")
+        elif severe_counts["fatal"] == 0 and severe_counts["major"] == 0:
+            flags.append("低分复核：低分但缺少 fatal/major 问题支撑，建议人工复核")
+
+        missing_evidence = [
+            issue for issue in valid_issues
+            if not _norm(issue.get("evidence_position")) or not _norm(issue.get("issue_text"))
+        ]
+        if missing_evidence:
+            flags.append(f"低分复核：{len(missing_evidence)} 项问题缺少证据位置或问题描述，建议人工复核")
+
+    return {"adjusted_score": adjusted_score, "flags": flags}
 
 
 # ──────────────────────────────────────────────
@@ -176,6 +347,7 @@ def apply_scoring_rules(
     llm_adjusted_score: float = 0,
     tci: Dict[str, Any] = None,
     issues: List[Dict[str, Any]] = None,
+    clause_scores: List[Dict[str, Any]] = None,
     vetoed: bool = False,
     buffer_level: str = "无",
     buffer_deduction: float = 0,
@@ -207,10 +379,18 @@ def apply_scoring_rules(
     """
     tci = tci or {}
     issues = issues or []
+    clause_scores = clause_scores or []
 
     score_general = _clamp(llm_score_general, 0, 45)
     score_specific = _clamp(llm_score_specific, 0, 55)
     provided_total = _clamp(llm_score_total, 0, 100)
+
+    clause_guard = apply_clause_score_guards(clause_scores, issues)
+    if clause_guard["flags"]:
+        score_general = max(0, score_general - clause_guard["general_delta"])
+        score_specific = max(0, score_specific - clause_guard["specific_delta"])
+        provided_total = max(0, provided_total - clause_guard["general_delta"] - clause_guard["specific_delta"])
+
     if score_general > 0 or score_specific > 0:
         score_total = min(score_general + score_specific, 100)
     else:
@@ -234,7 +414,12 @@ def apply_scoring_rules(
     adjusted_score = min(adjusted_score, ceiling)
     adjusted_score = max(0, int(adjusted_score))
 
-    # ── 5. 结论 ──
+    # ── 5. 高分/低分复核 ──
+    review_result = apply_score_review_guards(adjusted_score, issues)
+    adjusted_score = review_result["adjusted_score"]
+    review_flags = clause_guard["flags"] + review_result["flags"]
+
+    # ── 6. 结论 ──
     if vetoed:
         conclusion = "不合格"
     else:
@@ -251,4 +436,6 @@ def apply_scoring_rules(
         "conclusion": conclusion,
         "tci_deduction": int(tci_deduction),
         "ceiling": int(ceiling),
+        "review_flags": review_flags,
+        "clause_scores": clause_guard["clause_scores"],
     }
